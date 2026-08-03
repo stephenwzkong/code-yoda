@@ -247,6 +247,33 @@ input {
 
 /* ---------- chart ---------- */
 
+/* Thin top-of-pane progress bar while a level that is not cached lays out. */
+.chart-progress {
+  position: relative;
+  height: 2px;
+  flex: 0 0 auto;
+  overflow: hidden;
+  background: var(--border);
+}
+
+.chart-progress::after {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 35%;
+  background: var(--accent);
+  animation: chart-progress-slide 0.9s ease-in-out infinite;
+}
+
+@keyframes chart-progress-slide {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(350%);
+  }
+}
+
 .chart-pane {
   position: relative;
   flex: 1 1 auto;

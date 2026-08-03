@@ -1,82 +1,77 @@
-import mermaid from 'mermaid'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { View, ViewNode } from '../server/graph.ts'
-import { buildDiagram, nodeKeyFrom } from './mermaid-source.ts'
-
-mermaid.initialize({
-  startOnLoad: false,
-  theme: 'dark',
-  // 'loose' so our own <br/> in labels renders; label text is escaped in mermaid-source.
-  securityLevel: 'loose',
-  flowchart: { curve: 'basis', nodeSpacing: 40, rankSpacing: 70, htmlLabels: true },
-})
+import type { ViewNode } from '../server/graph.ts'
+import type { Diagram } from './diagram-cache.ts'
+import { nodeKeyFrom } from './mermaid-source.ts'
 
 interface Props {
-  view: View
+  diagram: Diagram
   selectedId?: string
   onSelect: (node: ViewNode) => void
+  /** Called when the pointer enters a node, so the next level can be prepared. */
+  onHover?: (node: ViewNode) => void
 }
 
-export function ChartPane({ view, selectedId, onSelect }: Props) {
+export function ChartPane({ diagram, selectedId, onSelect, onHover }: Props) {
   const hostRef = useRef<HTMLDivElement>(null)
   const [transform, setTransform] = useState({ x: 0, y: 0, scale: 1 })
-  const [error, setError] = useState<string | null>(null)
   const dragRef = useRef<{ x: number; y: number; ox: number; oy: number } | null>(null)
-  const renderSeq = useRef(0)
 
+  // Held in a ref so that a new click handler never re-triggers the mount effect:
+  // re-running it would re-lay-out the whole diagram, which costs ~250ms.
+  const onSelectRef = useRef(onSelect)
+  onSelectRef.current = onSelect
+  const onHoverRef = useRef(onHover)
+  onHoverRef.current = onHover
+
+  // Mount the pre-rendered SVG. Runs only when the diagram itself changes.
   useEffect(() => {
-    const seq = ++renderSeq.current
-    const { source, nodeById } = buildDiagram(view)
-    let cancelled = false
+    const host = hostRef.current
+    if (!host) return
+    host.innerHTML = diagram.svg
 
-    mermaid
-      .render(`yoda-${seq}`, source)
-      .then(({ svg }) => {
-        if (cancelled || !hostRef.current || seq !== renderSeq.current) return
-        setError(null)
-        hostRef.current.innerHTML = svg
-        const svgEl = hostRef.current.querySelector('svg')
-        if (svgEl) {
-          // Mermaid emits a percentage width, which collapses to zero inside a
-          // max-content stage. Pin the SVG to its viewBox size instead.
-          const [, , vbWidth, vbHeight] = (svgEl.getAttribute('viewBox') ?? '0 0 800 600')
-            .split(/\s+/)
-            .map(Number)
-          svgEl.setAttribute('width', String(vbWidth))
-          svgEl.setAttribute('height', String(vbHeight))
-          svgEl.style.maxWidth = 'none'
-        }
-        for (const el of hostRef.current.querySelectorAll('g.node')) {
-          const key = nodeKeyFrom(el.id || '')
-          const node = key ? nodeById.get(key) : undefined
-          if (!node) continue
-          el.classList.add('yoda-node')
-          if (node.id === selectedId) el.classList.add('yoda-selected')
-          el.addEventListener('click', (event) => {
-            event.stopPropagation()
-            onSelect(node)
-          })
-        }
-      })
-      .catch((err: Error) => {
-        if (!cancelled) setError(err.message)
-      })
-
-    return () => {
-      cancelled = true
+    const svgEl = host.querySelector('svg')
+    if (svgEl) {
+      // Mermaid emits a percentage width, which collapses to zero inside a
+      // max-content stage. Pin the SVG to its viewBox size instead.
+      const [, , vbWidth, vbHeight] = (svgEl.getAttribute('viewBox') ?? '0 0 800 600')
+        .split(/\s+/)
+        .map(Number)
+      svgEl.setAttribute('width', String(vbWidth))
+      svgEl.setAttribute('height', String(vbHeight))
+      svgEl.style.maxWidth = 'none'
     }
-  }, [view, selectedId, onSelect])
 
-  // Reset the viewport whenever we move to a different scope.
-  useEffect(() => setTransform({ x: 0, y: 0, scale: 1 }), [view.scope])
+    for (const el of host.querySelectorAll('g.node')) {
+      const node = diagram.nodeById.get(nodeKeyFrom(el.id || '') ?? '')
+      if (!node) continue
+      el.classList.add('yoda-node')
+      el.addEventListener('click', (event) => {
+        event.stopPropagation()
+        onSelectRef.current(node)
+      })
+      // Hovering reliably precedes clicking, which is enough lead time to lay
+      // out the next level before it is asked for.
+      el.addEventListener('mouseenter', () => onHoverRef.current?.(node), { once: true })
+    }
+  }, [diagram])
+
+  // Selection is a class toggle, never a re-render.
+  useEffect(() => {
+    const host = hostRef.current
+    if (!host) return
+    for (const el of host.querySelectorAll('g.node')) {
+      const node = diagram.nodeById.get(nodeKeyFrom(el.id || '') ?? '')
+      el.classList.toggle('yoda-selected', !!node && node.id === selectedId)
+    }
+  }, [diagram, selectedId])
+
+  // Reset the viewport when we move to a different scope.
+  useEffect(() => setTransform({ x: 0, y: 0, scale: 1 }), [diagram.view.scope])
 
   const onWheel = useCallback((event: React.WheelEvent) => {
     if (!event.ctrlKey && !event.metaKey && Math.abs(event.deltaY) < 1) return
     event.preventDefault()
-    setTransform((t) => {
-      const next = Math.min(4, Math.max(0.15, t.scale * (event.deltaY < 0 ? 1.12 : 0.89)))
-      return { ...t, scale: next }
-    })
+    setTransform((t) => ({ ...t, scale: Math.min(4, Math.max(0.15, t.scale * (event.deltaY < 0 ? 1.12 : 0.89))) }))
   }, [])
 
   const onPointerDown = (event: React.PointerEvent) => {
@@ -88,11 +83,7 @@ export function ChartPane({ view, selectedId, onSelect }: Props) {
   const onPointerMove = (event: React.PointerEvent) => {
     const drag = dragRef.current
     if (!drag) return
-    setTransform((t) => ({
-      ...t,
-      x: drag.ox + (event.clientX - drag.x),
-      y: drag.oy + (event.clientY - drag.y),
-    }))
+    setTransform((t) => ({ ...t, x: drag.ox + (event.clientX - drag.x), y: drag.oy + (event.clientY - drag.y) }))
   }
 
   const endDrag = () => {
@@ -109,12 +100,6 @@ export function ChartPane({ view, selectedId, onSelect }: Props) {
         onPointerUp={endDrag}
         onPointerCancel={endDrag}
       >
-        {error ? (
-          <div className="chart-error">
-            <strong>Could not render this diagram.</strong>
-            <pre>{error}</pre>
-          </div>
-        ) : null}
         <div
           ref={hostRef}
           className="chart-stage"

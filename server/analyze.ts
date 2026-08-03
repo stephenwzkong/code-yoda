@@ -107,7 +107,22 @@ export async function analyze(source: Source, cap = 3000): Promise<Analysis> {
 /** Look up an already-analyzed repo without re-walking it. */
 export function getAnalysis(repoId: string): Analysis | undefined {
   for (const [key, value] of memory) if (key.startsWith(`${repoId}-`)) return value
-  return undefined
+
+  // Fall back to disk so that a server restart (which `tsx watch` does on every
+  // save) does not strand an open page with "that repo is not loaded any more".
+  try {
+    const newest = fs
+      .readdirSync(GRAPHS_DIR)
+      .filter((name) => name.startsWith(`${repoId}-`) && name.endsWith('.json'))
+      .map((name) => ({ name, mtime: fs.statSync(path.join(GRAPHS_DIR, name)).mtimeMs }))
+      .sort((a, b) => b.mtime - a.mtime)[0]
+    if (!newest) return undefined
+    const analysis = JSON.parse(fs.readFileSync(path.join(GRAPHS_DIR, newest.name), 'utf8')) as Analysis
+    memory.set(newest.name.replace(/\.json$/, ''), analysis)
+    return analysis
+  } catch {
+    return undefined
+  }
 }
 
 function readDiskCache(key: string): Analysis | undefined {

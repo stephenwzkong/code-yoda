@@ -1,8 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { View, ViewNode } from '../server/graph.ts'
-import { analyzeSource, fetchFile, fetchSymbol, fetchView, search, type Meta, type SearchHit } from './api.ts'
+import type { ViewNode } from '../server/graph.ts'
+import { analyzeSource, fetchFile, fetchSymbol, search, type Meta, type SearchHit } from './api.ts'
 import { Breadcrumbs } from './Breadcrumbs.tsx'
 import { ChartPane } from './ChartPane.tsx'
+import {
+  invalidateRepo,
+  loadDiagram,
+  peek,
+  prefetchChildren,
+  warmUp,
+  type Diagram,
+} from './diagram-cache.ts'
 import { SidePanel, type Selection } from './SidePanel.tsx'
 
 const LAST_SOURCE_KEY = 'code-yoda:last-source'
@@ -12,7 +20,8 @@ export function App() {
   const [meta, setMeta] = useState<Meta | null>(null)
   const [scope, setScope] = useState('')
   const [expanded, setExpanded] = useState(false)
-  const [view, setView] = useState<View | null>(null)
+  const [diagram, setDiagram] = useState<Diagram | null>(null)
+  const [chartPending, setChartPending] = useState(false)
   const [selection, setSelection] = useState<Selection | null>(null)
   const [selectedNodeId, setSelectedNodeId] = useState<string | undefined>()
   const [analyzing, setAnalyzing] = useState(false)
@@ -30,6 +39,8 @@ export function App() {
     try {
       const result = await analyzeSource(sourceInput)
       localStorage.setItem(LAST_SOURCE_KEY, sourceInput)
+      // The repo may have changed on disk since we last rendered it.
+      invalidateRepo(result.repoId)
       setMeta(result)
       setScope('')
       setExpanded(false)
@@ -38,28 +49,44 @@ export function App() {
     } catch (err) {
       setError((err as Error).message)
       setMeta(null)
-      setView(null)
+      setDiagram(null)
     } finally {
       setAnalyzing(false)
     }
   }, [sourceInput])
 
-  // Load the diagram whenever the repo or scope changes.
+  // Mermaid's engine warm-up is ~60ms; pay it while the empty state is on screen.
+  useEffect(warmUp, [])
+
+  // Load the diagram whenever the repo or scope changes, then render the levels
+  // below it in the background so the next click has nothing left to compute.
   useEffect(() => {
     if (!meta) return
     let cancelled = false
-    fetchView(meta.repoId, scope, expanded)
+    let stopPrefetch: (() => void) | undefined
+
+    // A cached level swaps in synchronously — no spinner, no flash of emptiness.
+    const cached = peek(meta.repoId, scope, expanded)
+    if (cached) setDiagram(cached)
+    else setChartPending(true)
+
+    loadDiagram(meta.repoId, scope, expanded)
       .then((next) => {
-        if (!cancelled) {
-          setView(next)
-          setError(null)
-        }
+        if (cancelled) return
+        setDiagram(next)
+        setError(null)
+        stopPrefetch = prefetchChildren(meta.repoId, next.view)
       })
       .catch((err: Error) => {
         if (!cancelled) setError(err.message)
       })
+      .finally(() => {
+        if (!cancelled) setChartPending(false)
+      })
+
     return () => {
       cancelled = true
+      stopPrefetch?.()
     }
   }, [meta, scope, expanded])
 
@@ -130,6 +157,14 @@ export function App() {
       }
     },
     [goTo, openFile, openSymbol],
+  )
+
+  const onNodeHover = useCallback(
+    (node: ViewNode) => {
+      if (!meta || (node.kind !== 'folder' && node.kind !== 'file')) return
+      void loadDiagram(meta.repoId, node.path).catch(() => undefined)
+    },
+    [meta],
   )
 
   // Debounced symbol search.
@@ -235,11 +270,21 @@ export function App() {
 
       <div className="workspace">
         <main className="main-pane">
-          {view ? (
+          {diagram ? (
             <>
-              <Breadcrumbs crumbs={view.breadcrumbs} onNavigate={goTo} />
-              <ChartPane view={view} selectedId={selectedNodeId} onSelect={onNodeSelect} />
+              <Breadcrumbs crumbs={diagram.view.breadcrumbs} onNavigate={goTo} />
+              {chartPending ? <div className="chart-progress" /> : null}
+              <ChartPane
+                diagram={diagram}
+                selectedId={selectedNodeId}
+                onSelect={onNodeSelect}
+                onHover={onNodeHover}
+              />
             </>
+          ) : chartPending ? (
+            <div className="empty-state">
+              <p>Laying out the diagram…</p>
+            </div>
           ) : (
             <div className="empty-state">
               <h1>Visualize a codebase</h1>

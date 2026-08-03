@@ -19,6 +19,9 @@ Then enter a path (`/Users/me/code/my-project`) or a URL
 Requires Node 20+, `python3` on PATH (set `PYTHON` to override), and `git` for GitHub URLs.
 Private repos work through your existing git credentials — there is no token to configure.
 
+The server binds to `127.0.0.1` only. It will analyze any path you give it and serve those
+files back, so it must not be exposed to a network; `HOST` can override this, but don't.
+
 ```bash
 npm test             # analyzer, projection and diagram tests
 npm run typecheck
@@ -41,6 +44,19 @@ Clicking a **function** opens it in the panel without moving the diagram. Any le
 
 The side panel shows highlighted source scrolled to the symbol, its docstring, and
 **Callers**/**Callees** lists that navigate the graph — plus an *Open in VS Code* link.
+
+### Why it feels instant
+
+Mermaid's layout is the expensive part of this app — 200–260 ms for a real view, against
+~3 ms to fetch the data. So diagrams are laid out ahead of time and kept:
+
+- every rendered level is **cached**, so breadcrumbs and revisits are ~10 ms;
+- the levels below the current one are **pre-rendered during idle time**, most-connected
+  first, so the likely next click has nothing left to compute;
+- **hovering** a block starts its layout immediately, which covers the rest;
+- selecting a function is a **class toggle, not a re-render** — the diagram is untouched.
+
+Measured on `psf/requests`: drill-down went from 200–330 ms to 11–21 ms.
 
 ## Edge confidence
 

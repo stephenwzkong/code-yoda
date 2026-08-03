@@ -163,7 +163,10 @@ async function start() {
     const vite = await createServer({ server: { middlewareMode: true }, appType: 'spa' })
     app.use(vite.middlewares)
   }
-  app.listen(PORT, () => console.log(`code-yoda running at http://localhost:${PORT}`))
+  // Bind to loopback only. This server will analyze any path it is given and
+  // serve those files back, so it must never be reachable from the network.
+  const HOST = process.env.HOST ?? '127.0.0.1'
+  app.listen(PORT, HOST, () => console.log(`code-yoda running at http://localhost:${PORT}`))
 }
 
 start()
