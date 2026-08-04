@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { FileDetail, SymbolDetail, SymbolRef } from './api.ts'
+import type { FileDetail, FolderDetail, SymbolDetail, SymbolRef } from './api.ts'
 import { afterPaint } from './after-paint.ts'
 import { highlight } from './highlight.ts'
 
 export type Selection =
   | { kind: 'file'; detail: FileDetail }
   | { kind: 'symbol'; detail: SymbolDetail }
+  | { kind: 'folder'; detail: FolderDetail }
 
 interface Props {
   selection: Selection | null
@@ -20,7 +21,7 @@ export function SidePanel({ selection, loading, error, onOpenSymbol, onOpenFile 
   const codeRef = useRef<HTMLDivElement>(null)
 
   const view = useMemo(() => {
-    if (!selection) return null
+    if (!selection || selection.kind === 'folder') return null
     if (selection.kind === 'symbol') {
       const { symbol, path, abs, lang, code, callers, callees } = selection.detail
       return {
@@ -82,6 +83,9 @@ export function SidePanel({ selection, loading, error, onOpenSymbol, onOpenFile 
 
   if (loading) return <aside className="side-panel"><div className="panel-empty">Loading…</div></aside>
   if (error) return <aside className="side-panel"><div className="panel-error">{error}</div></aside>
+  if (selection?.kind === 'folder') {
+    return <FolderView detail={selection.detail} onOpenFile={onOpenFile} />
+  }
   if (!view) {
     return (
       <aside className="side-panel">
@@ -164,5 +168,45 @@ function RefList({
         </ul>
       ) : null}
     </div>
+  )
+}
+
+/** What a folder contains — so clicking one changes the panel, not just the chart. */
+function FolderView({
+  detail,
+  onOpenFile,
+}: {
+  detail: FolderDetail
+  onOpenFile: (path: string) => void
+}) {
+  const langs = Object.entries(detail.langs)
+    .map(([lang, n]) => `${n} ${lang}`)
+    .join(' · ')
+
+  return (
+    <aside className="side-panel">
+      <header className="panel-header">
+        <div className="panel-title-row">
+          <span className="badge badge-folder">folder</span>
+          <h2>{detail.path || 'repository root'}</h2>
+        </div>
+        <p className="panel-doc">
+          {detail.fileCount} files · {detail.symbolCount} symbols{langs ? ` · ${langs}` : ''}
+        </p>
+      </header>
+      <div className="ref-list">
+        <div className="ref-toggle">Files</div>
+        <ul>
+          {detail.files.map((f) => (
+            <li key={f.path}>
+              <button onClick={() => onOpenFile(f.path)} title={f.path}>
+                <span className="ref-name">{f.name}</span>
+                <span className="ref-path">{f.symbols || ''}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </aside>
   )
 }

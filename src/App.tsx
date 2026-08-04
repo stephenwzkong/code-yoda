@@ -3,8 +3,10 @@ import type { ViewNode } from '../server/graph.ts'
 import {
   analyzeSource,
   fetchFile,
+  fetchFolder,
   fetchSymbol,
   overviewAvailable,
+  saveApiKey,
   search,
   type CredentialStatus,
   type Meta,
@@ -50,6 +52,8 @@ export function App() {
   const [hits, setHits] = useState<SearchHit[]>([])
   const [query, setQuery] = useState('')
   const [panelWidth, setPanelWidth] = useState(520)
+  const [keyInput, setKeyInput] = useState('')
+  const [savingKey, setSavingKey] = useState(false)
   const resizing = useRef(false)
 
   const runAnalysis = useCallback(async () => {
@@ -137,6 +141,24 @@ export function App() {
     [meta],
   )
 
+  const openFolder = useCallback(
+    async (path: string) => {
+      if (!meta) return
+      setPanelLoading(true)
+      setPanelError(null)
+      setSelectedNodeId(path)
+      try {
+        setSelection({ kind: 'folder', detail: await fetchFolder(meta.repoId, path) })
+      } catch (err) {
+        setSelection(null)
+        setPanelError((err as Error).message)
+      } finally {
+        setPanelLoading(false)
+      }
+    },
+    [meta],
+  )
+
   const openFile = useCallback(
     async (path: string) => {
       if (!meta) return
@@ -167,7 +189,10 @@ export function App() {
           setExpanded(true)
           return
         case 'folder':
+          // Drill the chart in AND describe the folder, so a click always
+          // changes both halves of the screen.
           goTo(node.path)
+          void openFolder(node.path)
           return
         case 'file':
           // Diagrams stop at files, so this only opens the source — the chart
@@ -185,7 +210,7 @@ export function App() {
           if (node.symbolId) void openSymbol(node.symbolId)
       }
     },
-    [goTo, openFile, openSymbol],
+    [goTo, openFile, openFolder, openSymbol],
   )
 
   const onNodeHover = useCallback(
@@ -327,9 +352,41 @@ export function App() {
       ) : null}
       {meta && auth && !auth.available ? (
         <div className="banner warn">
-          <strong>AI subsystems is off</strong> — it needs Anthropic access. Either export an API key
-          (<code>ANTHROPIC_API_KEY=sk-ant-…</code>) or sign in with your Claude account
-          (<code>ant auth login</code>). Restart the server afterwards.
+          <form
+            className="key-form"
+            onSubmit={(event) => {
+              event.preventDefault()
+              setSavingKey(true)
+              saveApiKey(keyInput)
+                .then((status) => {
+                  setAuth(status)
+                  setKeyInput('')
+                  setError(null)
+                })
+                .catch((err: Error) => setError(err.message))
+                .finally(() => setSavingKey(false))
+            }}
+          >
+            <strong>AI subsystems is off.</strong>
+            <span>Paste an Anthropic API key to turn it on:</span>
+            <input
+              type="password"
+              value={keyInput}
+              onChange={(event) => setKeyInput(event.target.value)}
+              placeholder="sk-ant-…"
+              autoComplete="off"
+              spellCheck={false}
+              aria-label="Anthropic API key"
+            />
+            <button type="submit" disabled={savingKey || !keyInput.trim()}>
+              {savingKey ? 'Checking…' : 'Use key'}
+            </button>
+          </form>
+          <p className="key-note">
+            Kept in the server's memory only — never written to disk, and gone when it stops.
+            Alternatively sign in with your Claude account: run <code>ant auth login</code> in a
+            terminal, then restart the server.
+          </p>
         </div>
       ) : null}
       {error ? <div className="banner error">{error}</div> : null}
@@ -350,7 +407,7 @@ export function App() {
                 onSelect={onNodeSelect}
                 onHover={onNodeHover}
                 pending={chartPending}
-                pendingLabel={scope.split('/').pop()}
+                pendingLabel={mode === 'ai' ? 'Claude is grouping this repo' : scope.split('/').pop()}
               />
             </>
           ) : chartPending ? (

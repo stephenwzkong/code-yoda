@@ -123,6 +123,55 @@ app.get('/api/source', (req, res, next) => {
   }
 })
 
+/**
+ * Folder contents for the side panel. Clicking a folder drills the diagram in;
+ * this makes the panel respond too, so every click produces something visible.
+ */
+app.get('/api/folder', (req, res, next) => {
+  try {
+    const { ir } = requireAnalysis(req.query.repoId)
+    const scope = String(req.query.path ?? '')
+    const prefix = scope ? `${scope}/` : ''
+    const files = ir.files.filter((f) => f.path.startsWith(prefix))
+    if (files.length === 0) throw new HttpError(404, `No analyzed files under "${scope}"`)
+
+    const langs: Record<string, number> = {}
+    for (const f of files) langs[f.lang] = (langs[f.lang] ?? 0) + 1
+
+    res.json({
+      path: scope,
+      fileCount: files.length,
+      symbolCount: files.reduce((n, f) => n + f.symbols.length, 0),
+      langs,
+      files: files
+        .map((f) => ({ path: f.path, name: f.path.slice(prefix.length), symbols: f.symbols.length }))
+        .sort((a, b) => b.symbols - a.symbols || a.name.localeCompare(b.name))
+        .slice(0, 200),
+    })
+  } catch (err) {
+    next(err)
+  }
+})
+
+/**
+ * Accepts an API key typed into the UI, so the AI view can be enabled without
+ * restarting the server or editing a shell profile. Held in memory only — it is
+ * never written to disk, and is gone when the server stops.
+ */
+app.post('/api/credentials', (req, res, next) => {
+  try {
+    const key = String(req.body?.apiKey ?? '').trim()
+    if (!key) throw new HttpError(400, 'Paste an API key first.')
+    if (!key.startsWith('sk-ant-')) {
+      throw new HttpError(400, 'That does not look like an Anthropic API key (they start with sk-ant-).')
+    }
+    process.env.ANTHROPIC_API_KEY = key
+    res.json(credentialStatus())
+  } catch (err) {
+    next(err)
+  }
+})
+
 app.get('/api/symbol', (req, res, next) => {
   try {
     const { ir } = requireAnalysis(req.query.repoId)

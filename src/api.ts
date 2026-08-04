@@ -99,3 +99,27 @@ export interface CredentialStatus {
 export function overviewAvailable(): Promise<CredentialStatus> {
   return get<CredentialStatus>('/api/overview/available')
 }
+
+export interface FolderDetail {
+  path: string
+  fileCount: number
+  symbolCount: number
+  langs: Record<string, number>
+  files: Array<{ path: string; name: string; symbols: number }>
+}
+
+export function fetchFolder(repoId: string, path: string): Promise<FolderDetail> {
+  return get<FolderDetail>(`/api/folder?${new URLSearchParams({ repoId, path })}`)
+}
+
+export function saveApiKey(apiKey: string): Promise<CredentialStatus> {
+  return fetch('/api/credentials', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ apiKey }),
+  }).then(async (res) => {
+    const body = await res.json()
+    if (!res.ok) throw new Error(body?.error ?? 'Could not save the key')
+    return body as CredentialStatus
+  })
+}

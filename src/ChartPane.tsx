@@ -187,7 +187,7 @@ export function ChartPane({ diagram, selectedId, onSelect, onHover, pending, pen
         <div className="chart-overlay" role="status" aria-live="polite">
           <div className="chart-spinner" />
           <span>
-            Laying out {pendingLabel ? <strong>{pendingLabel}</strong> : 'diagram'}…
+            {pendingLabel ? <strong>{pendingLabel}</strong> : 'Laying out diagram'}…
           </span>
         </div>
       ) : null}
