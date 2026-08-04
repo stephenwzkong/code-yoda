@@ -54,6 +54,7 @@ export function App() {
   const [panelWidth, setPanelWidth] = useState(520)
   const [keyInput, setKeyInput] = useState('')
   const [savingKey, setSavingKey] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
   const resizing = useRef(false)
 
   const runAnalysis = useCallback(async () => {
@@ -339,6 +340,59 @@ export function App() {
             </button>
           </div>
         ) : null}
+        <div className="settings">
+          <button
+            className={auth?.available ? 'settings-button' : 'settings-button needs-setup'}
+            onClick={() => setMenuOpen((o) => !o)}
+            title="Anthropic access"
+            aria-expanded={menuOpen}
+          >
+            ⚙
+          </button>
+          {menuOpen ? (
+            <div className="settings-menu">
+              <h3>Anthropic access</h3>
+              {auth?.available ? (
+                <p className="settings-status ok">Connected via {auth.detail}</p>
+              ) : (
+                <p className="settings-status">Not connected — the AI view is off.</p>
+              )}
+              <form
+                onSubmit={(event) => {
+                  event.preventDefault()
+                  setSavingKey(true)
+                  saveApiKey(keyInput)
+                    .then((status) => {
+                      setAuth(status)
+                      setKeyInput('')
+                      setError(null)
+                      setMenuOpen(false)
+                    })
+                    .catch((err: Error) => setError(err.message))
+                    .finally(() => setSavingKey(false))
+                }}
+              >
+                <label htmlFor="api-key">API key</label>
+                <input
+                  id="api-key"
+                  type="password"
+                  value={keyInput}
+                  onChange={(event) => setKeyInput(event.target.value)}
+                  placeholder="sk-ant-…"
+                  autoComplete="off"
+                  spellCheck={false}
+                />
+                <button type="submit" disabled={savingKey || !keyInput.trim()}>
+                  {savingKey ? 'Checking…' : 'Use this key'}
+                </button>
+              </form>
+              <p className="settings-note">
+                Held in the server's memory only — never written to disk. Or sign in with your Claude
+                account: run <code>ant auth login</code>, then restart the server.
+              </p>
+            </div>
+          ) : null}
+        </div>
         {meta ? (
           <div className="repo-stats">
             {meta.fileCount} files · {meta.symbolCount} symbols · {meta.edgeCount} edges
@@ -349,45 +403,6 @@ export function App() {
 
       {mode === 'ai' && auth?.available ? (
         <div className="banner info">Subsystems named by Claude · authenticated via {auth.detail}</div>
-      ) : null}
-      {meta && auth && !auth.available ? (
-        <div className="banner warn">
-          <form
-            className="key-form"
-            onSubmit={(event) => {
-              event.preventDefault()
-              setSavingKey(true)
-              saveApiKey(keyInput)
-                .then((status) => {
-                  setAuth(status)
-                  setKeyInput('')
-                  setError(null)
-                })
-                .catch((err: Error) => setError(err.message))
-                .finally(() => setSavingKey(false))
-            }}
-          >
-            <strong>AI subsystems is off.</strong>
-            <span>Paste an Anthropic API key to turn it on:</span>
-            <input
-              type="password"
-              value={keyInput}
-              onChange={(event) => setKeyInput(event.target.value)}
-              placeholder="sk-ant-…"
-              autoComplete="off"
-              spellCheck={false}
-              aria-label="Anthropic API key"
-            />
-            <button type="submit" disabled={savingKey || !keyInput.trim()}>
-              {savingKey ? 'Checking…' : 'Use key'}
-            </button>
-          </form>
-          <p className="key-note">
-            Kept in the server's memory only — never written to disk, and gone when it stops.
-            Alternatively sign in with your Claude account: run <code>ant auth login</code> in a
-            terminal, then restart the server.
-          </p>
-        </div>
       ) : null}
       {error ? <div className="banner error">{error}</div> : null}
       {meta?.warnings.map((warning) => (

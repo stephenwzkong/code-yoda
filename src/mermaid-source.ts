@@ -85,14 +85,42 @@ export function buildDiagram(view: View): Diagram {
   })
 
   const lines = ['flowchart LR']
+
+  // Nodes carrying a `group` are drawn inside a labelled subgraph — the poster
+  // view, where each box is a subsystem and edges run between the boxes.
+  const grouped = new Map<string, ViewNode[]>()
   for (const node of view.nodes) {
+    if (!node.group) continue
+    const bucket = grouped.get(node.group)
+    if (bucket) bucket.push(node)
+    else grouped.set(node.group, [node])
+  }
+
+  const groupAlias = new Map<string, string>()
+  let g = 0
+  for (const [name, members] of grouped) {
+    const key = `g${g++}`
+    groupAlias.set(`group:${name}`, key)
+    lines.push(`  subgraph ${key}["${escapeLabel(name)}"]`)
+    for (const node of members) {
+      const nodeKey = alias.get(node.id)!
+      lines.push(`    ${shape(nodeKey, node)}`)
+      lines.push(`    class ${nodeKey} ${styleClass(node)}`)
+    }
+    lines.push('  end')
+  }
+
+  for (const node of view.nodes) {
+    if (node.group) continue
     const key = alias.get(node.id)!
     lines.push(`  ${shape(key, node)}`)
     lines.push(`  class ${key} ${styleClass(node)}`)
   }
+
   for (const edge of view.edges) {
-    const from = alias.get(edge.from)
-    const to = alias.get(edge.to)
+    // Poster edges reference subgraphs; level edges reference nodes.
+    const from = groupAlias.get(edge.from) ?? alias.get(edge.from)
+    const to = groupAlias.get(edge.to) ?? alias.get(edge.to)
     if (!from || !to) continue
     lines.push(`  ${from} ${connector(edge)} ${to}`)
   }

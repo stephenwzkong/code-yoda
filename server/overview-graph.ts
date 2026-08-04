@@ -3,81 +3,90 @@ import type { RepoGroup } from './llm.ts'
 import { fileOf, type IR } from './types.ts'
 
 /**
- * Turns Claude's groupings into the same `View` the deterministic projection
- * produces, so the chart, click handling and side panel work unchanged.
+ * One whole-repo poster: every subsystem drawn as a labelled box holding its
+ * most-connected files, with the dependencies between subsystems.
  *
- * The model supplies only the grouping and the names. Nodes are real files and
- * edges are the ones the analyzers resolved — nothing here is model-authored.
+ * This is deliberately a single diagram rather than a level to drill through.
+ * The grouping costs a model call, but once it is rendered there is nothing
+ * left to lay out — no second level, no per-click latency.
+ *
+ * Claude supplies only the grouping and the names. Nodes are real files and
+ * edges come from the analyzers, so every node opens real source.
  */
-export function projectOverview(ir: IR, groups: RepoGroup[], group?: string): View {
-  return group ? filesInGroup(ir, groups, group) : subsystems(ir, groups)
-}
 
-/** Top level: one node per subsystem, edges aggregated between them. */
-function subsystems(ir: IR, groups: RepoGroup[]): View {
+/** Files shown inside each subsystem box. Enough to recognise it, few enough to read. */
+const FILES_PER_GROUP = 5
+
+export function projectOverview(ir: IR, groups: RepoGroup[]): View {
   const groupOf = new Map<string, string>()
   for (const g of groups) for (const path of g.paths) groupOf.set(path, g.name)
 
-  const nodes: ViewNode[] = groups.map((g) => ({
-    id: `group:${g.name}`,
-    label: g.name,
-    kind: 'folder',
-    path: `group:${g.name}`,
-    count: g.paths.length,
-  }))
+  const degree = fileDegrees(ir)
 
-  const edges = aggregate(ir, (path) => {
-    const name = groupOf.get(path)
-    return name ? `group:${name}` : undefined
-  })
+  const nodes: ViewNode[] = []
+  for (const group of groups) {
+    const shown = [...group.paths]
+      .sort((a, b) => (degree.get(b) ?? 0) - (degree.get(a) ?? 0) || a.localeCompare(b))
+      .slice(0, FILES_PER_GROUP)
+
+    for (const path of shown) {
+      const file = ir.files.find((f) => f.path === path)
+      nodes.push({
+        id: path,
+        label: path.split('/').pop() ?? path,
+        kind: 'file',
+        lang: file?.lang,
+        path,
+        count: file?.symbols.length,
+        group: group.name,
+      })
+    }
+
+    const hidden = group.paths.length - shown.length
+    if (hidden > 0) {
+      nodes.push({
+        id: `more:${group.name}`,
+        label: `+${hidden} more`,
+        kind: 'more',
+        path: '',
+        hidden,
+        group: group.name,
+      })
+    }
+  }
 
   return {
     scope: '',
     scopeKind: 'dir',
-    breadcrumbs: [{ label: 'Subsystems', scope: '' }],
+    breadcrumbs: [{ label: 'Whole repository', scope: '' }],
     nodes,
-    edges,
+    edges: betweenGroups(ir, groupOf),
     collapsed: false,
   }
 }
 
-/** Second level: the files in one subsystem, with the edges between them. */
-function filesInGroup(ir: IR, groups: RepoGroup[], groupId: string): View {
-  const name = groupId.replace(/^group:/, '')
-  const group = groups.find((g) => g.name === name)
-  const paths = new Set(group?.paths ?? [])
-
-  const nodes: ViewNode[] = ir.files
-    .filter((f) => paths.has(f.path))
-    .map((f) => ({
-      id: f.path,
-      label: f.path,
-      kind: 'file',
-      lang: f.lang,
-      path: f.path,
-      count: f.symbols.length,
-    }))
-
-  const edges = aggregate(ir, (path) => (paths.has(path) ? path : undefined))
-
-  return {
-    scope: groupId,
-    scopeKind: 'dir',
-    breadcrumbs: [
-      { label: 'Subsystems', scope: '' },
-      { label: name, scope: groupId },
-    ],
-    nodes,
-    edges,
-    collapsed: false,
+/** How connected each file is, so the poster shows each subsystem's hubs. */
+function fileDegrees(ir: IR): Map<string, number> {
+  const degree = new Map<string, number>()
+  for (const edge of ir.edges) {
+    const from = fileOf(edge.from)
+    const to = fileOf(edge.to)
+    if (from === to) continue
+    degree.set(from, (degree.get(from) ?? 0) + 1)
+    degree.set(to, (degree.get(to) ?? 0) + 1)
   }
+  return degree
 }
 
-function aggregate(ir: IR, bucketOf: (path: string) => string | undefined): ViewEdge[] {
+/**
+ * Subsystem-to-subsystem dependencies, drawn between the boxes themselves so
+ * the poster shows architecture rather than a mesh of individual files.
+ */
+function betweenGroups(ir: IR, groupOf: Map<string, string>): ViewEdge[] {
   const merged = new Map<string, ViewEdge>()
   for (const e of ir.edges) {
-    const from = bucketOf(fileOf(e.from))
-    const to = bucketOf(fileOf(e.to))
+    const from = groupOf.get(fileOf(e.from))
+    const to = groupOf.get(fileOf(e.to))
     if (!from || !to || from === to) continue
     const key = `${from} ${to}`
     const prior = merged.get(key)
@@ -87,7 +96,13 @@ function aggregate(ir: IR, bucketOf: (path: string) => string | undefined): View
       if (e.confidence === 'resolved') prior.confidence = 'resolved'
       continue
     }
-    merged.set(key, { from, to, kind: e.kind, count: 1, confidence: e.confidence })
+    merged.set(key, {
+      from: `group:${from}`,
+      to: `group:${to}`,
+      kind: e.kind,
+      count: 1,
+      confidence: e.confidence,
+    })
   }
   return [...merged.values()].sort((a, b) => b.count - a.count)
 }

@@ -828,3 +828,99 @@ input {
   background: #1f3a5f;
   color: #cfe2f7;
 }
+
+/* Anthropic access lives in a menu, not permanently on screen. */
+.settings {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.settings-button {
+  padding: 4px 9px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1.2;
+}
+
+.settings-button:hover {
+  color: var(--text);
+}
+
+.settings-button.needs-setup {
+  border-color: var(--warn);
+  color: var(--warn);
+}
+
+.settings-menu {
+  position: absolute;
+  z-index: 40;
+  top: 130%;
+  right: 0;
+  width: 320px;
+  padding: 14px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6);
+}
+
+.settings-menu h3 {
+  margin: 0 0 8px;
+  font-size: 13px;
+}
+
+.settings-status {
+  margin: 0 0 10px;
+  color: var(--muted);
+}
+
+.settings-status.ok {
+  color: var(--accent);
+}
+
+.settings-menu label {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--muted);
+  font-size: 11.5px;
+}
+
+.settings-menu input {
+  width: 100%;
+  padding: 6px 9px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  outline: none;
+}
+
+.settings-menu input:focus {
+  border-color: var(--accent);
+}
+
+.settings-menu form button {
+  width: 100%;
+  margin-top: 8px;
+  padding: 6px;
+  background: var(--accent);
+  color: #06231b;
+  border: none;
+  border-radius: 6px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.settings-menu form button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.settings-note {
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+}

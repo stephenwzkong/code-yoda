@@ -93,7 +93,7 @@ app.get('/api/overview', async (req, res, next) => {
       overviews.set(repoId, groups)
     }
 
-    res.json(projectOverview(ir, groups, String(req.query.scope ?? '') || undefined))
+    res.json(projectOverview(ir, groups))
   } catch (err) {
     next(err instanceof HttpError ? err : new HttpError(502, (err as Error).message))
   }

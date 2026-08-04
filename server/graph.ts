@@ -26,6 +26,8 @@ export interface ViewNode {
   count?: number
   /** for the `more` node: how many nodes it stands in for */
   hidden?: number
+  /** subsystem this node belongs to, drawn as a mermaid subgraph */
+  group?: string
 }
 
 export interface ViewEdge {
