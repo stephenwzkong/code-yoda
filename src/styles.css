@@ -924,3 +924,17 @@ input {
   color: var(--muted);
   font-size: 11px;
 }
+
+/* Subsystem boxes in the poster are clickable, like the nodes inside them. */
+.yoda-group {
+  cursor: pointer;
+}
+
+.yoda-group:hover > rect {
+  filter: brightness(1.4);
+}
+
+.badge-subsystem {
+  background: #3d2c4f;
+  color: #d3b0f0;
+}

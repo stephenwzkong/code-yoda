@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ViewNode } from '../server/graph.ts'
 import type { Diagram } from './diagram-cache.ts'
-import { nodeKeyFrom } from './mermaid-source.ts'
+import { groupKeyFrom, nodeKeyFrom } from './mermaid-source.ts'
 
 interface Props {
   diagram: Diagram
@@ -9,6 +9,8 @@ interface Props {
   onSelect: (node: ViewNode) => void
   /** Called when the pointer enters a node, so the next level can be prepared. */
   onHover?: (node: ViewNode) => void
+  /** Poster view: a subsystem box was clicked. */
+  onSelectGroup?: (name: string) => void
   /** True while a level that was not already laid out is being prepared. */
   pending?: boolean
   pendingLabel?: string
@@ -71,7 +73,15 @@ function upOneLevel(scope: string): ViewNode {
   return { id: parent, label: parent, kind: 'folder', path: parent }
 }
 
-export function ChartPane({ diagram, selectedId, onSelect, onHover, pending, pendingLabel }: Props) {
+export function ChartPane({
+  diagram,
+  selectedId,
+  onSelect,
+  onHover,
+  onSelectGroup,
+  pending,
+  pendingLabel,
+}: Props) {
   const hostRef = useRef<HTMLDivElement>(null)
   const [transform, setTransform] = useState({ x: 0, y: 0, scale: 1 })
   const dragRef = useRef<{ x: number; y: number; ox: number; oy: number } | null>(null)
@@ -82,6 +92,8 @@ export function ChartPane({ diagram, selectedId, onSelect, onHover, pending, pen
   onSelectRef.current = onSelect
   const onHoverRef = useRef(onHover)
   onHoverRef.current = onHover
+  const onSelectGroupRef = useRef(onSelectGroup)
+  onSelectGroupRef.current = onSelectGroup
 
   // Mount the pre-rendered SVG. Runs only when the diagram itself changes.
   useEffect(() => {
@@ -122,6 +134,19 @@ export function ChartPane({ diagram, selectedId, onSelect, onHover, pending, pen
         dwell = setTimeout(() => onHoverRef.current?.(node), HOVER_DWELL_MS)
       })
       el.addEventListener('mouseleave', () => clearTimeout(dwell))
+    }
+
+    // The poster's subsystem boxes are the most prominent thing on screen, so
+    // they have to respond to a click too — not just the files inside them.
+    for (const el of host.querySelectorAll('g.cluster')) {
+      const name = diagram.groupByKey.get(groupKeyFrom(el.id || '') ?? '')
+      if (!name) continue
+      el.classList.add('yoda-group')
+      el.addEventListener('click', (event) => {
+        // A click on a file inside the box belongs to the file, not the box.
+        if ((event.target as Element).closest('g.node')) return
+        onSelectGroupRef.current?.(name)
+      })
     }
   }, [diagram])
 

@@ -15,6 +15,8 @@ export interface Diagram {
   view: View
   svg: string
   nodeById: Map<string, ViewNode>
+  /** subgraph alias -> subsystem name, for the poster's clickable boxes */
+  groupByKey: Map<string, string>
 }
 
 /** Lower runs first. A click must never wait behind speculative work. */
@@ -134,10 +136,10 @@ function startLoad(
 ): Promise<Diagram> {
   const promise = viewPromise
     .then(async (view) => {
-      const { source, nodeById } = buildDiagram(view)
+      const { source, nodeById, groupByKey } = buildDiagram(view)
       const [rendered, task] = enqueueRender(source, priority, group)
       pendingTasks.set(key, task)
-      const diagram: Diagram = { view, svg: await rendered, nodeById }
+      const diagram: Diagram = { view, svg: await rendered, nodeById, groupByKey }
       cache.set(key, diagram)
       return diagram
     })

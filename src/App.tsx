@@ -183,11 +183,24 @@ export function App() {
     setExpanded(false)
   }, [])
 
+  /** A subsystem box in the poster: show what it is and everything inside it. */
+  const openSubsystem = useCallback(
+    (name: string) => {
+      const group = diagram?.view.groups?.find((g) => g.name === name)
+      if (!group) return
+      setPanelError(null)
+      setSelectedNodeId(`group:${name}`)
+      setSelection({ kind: 'subsystem', detail: group })
+    },
+    [diagram],
+  )
+
   const onNodeSelect = useCallback(
     (node: ViewNode) => {
       switch (node.kind) {
         case 'more':
-          setExpanded(true)
+          if (node.group) openSubsystem(node.group)
+          else setExpanded(true)
           return
         case 'folder':
           // Drill the chart in AND describe the folder, so a click always
@@ -211,7 +224,7 @@ export function App() {
           if (node.symbolId) void openSymbol(node.symbolId)
       }
     },
-    [goTo, openFile, openFolder, openSymbol],
+    [goTo, openFile, openFolder, openSubsystem, openSymbol],
   )
 
   const onNodeHover = useCallback(
@@ -421,6 +434,7 @@ export function App() {
                 selectedId={selectedNodeId}
                 onSelect={onNodeSelect}
                 onHover={onNodeHover}
+                onSelectGroup={openSubsystem}
                 pending={chartPending}
                 pendingLabel={mode === 'ai' ? 'Claude is grouping this repo' : scope.split('/').pop()}
               />

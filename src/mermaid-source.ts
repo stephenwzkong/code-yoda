@@ -4,6 +4,8 @@ import type { View, ViewEdge, ViewNode } from '../server/graph.ts'
 export interface Diagram {
   source: string
   nodeById: Map<string, ViewNode>
+  /** subgraph alias (`g0`) -> subsystem name, for the poster's boxes */
+  groupByKey: Map<string, string>
 }
 
 /** Labels come from file and symbol names, so escape before we add our own markup. */
@@ -75,6 +77,11 @@ export function nodeKeyFrom(elementId: string): string | undefined {
   return /flowchart-(n\d+)-\d+$/.exec(elementId)?.[1]
 }
 
+/** Subgraph clusters are named `<diagramId>-<ourId>`, e.g. `yoda-3-g0`. */
+export function groupKeyFrom(elementId: string): string | undefined {
+  return /-(g\d+)$/.exec(elementId)?.[1]
+}
+
 export function buildDiagram(view: View): Diagram {
   const alias = new Map<string, string>()
   const nodeById = new Map<string, ViewNode>()
@@ -126,5 +133,8 @@ export function buildDiagram(view: View): Diagram {
   }
   for (const def of CLASS_DEFS) lines.push(`  ${def}`)
 
-  return { source: lines.join('\n'), nodeById }
+  const groupByKey = new Map<string, string>()
+  for (const [id, key] of groupAlias) groupByKey.set(key, id.replace(/^group:/, ''))
+
+  return { source: lines.join('\n'), nodeById, groupByKey }
 }

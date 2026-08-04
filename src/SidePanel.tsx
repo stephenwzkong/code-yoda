@@ -3,10 +3,17 @@ import type { FileDetail, FolderDetail, SymbolDetail, SymbolRef } from './api.ts
 import { afterPaint } from './after-paint.ts'
 import { highlight } from './highlight.ts'
 
+export interface SubsystemDetail {
+  name: string
+  purpose: string
+  paths: string[]
+}
+
 export type Selection =
   | { kind: 'file'; detail: FileDetail }
   | { kind: 'symbol'; detail: SymbolDetail }
   | { kind: 'folder'; detail: FolderDetail }
+  | { kind: 'subsystem'; detail: SubsystemDetail }
 
 interface Props {
   selection: Selection | null
@@ -21,7 +28,7 @@ export function SidePanel({ selection, loading, error, onOpenSymbol, onOpenFile 
   const codeRef = useRef<HTMLDivElement>(null)
 
   const view = useMemo(() => {
-    if (!selection || selection.kind === 'folder') return null
+    if (!selection || selection.kind === 'folder' || selection.kind === 'subsystem') return null
     if (selection.kind === 'symbol') {
       const { symbol, path, abs, lang, code, callers, callees } = selection.detail
       return {
@@ -85,6 +92,9 @@ export function SidePanel({ selection, loading, error, onOpenSymbol, onOpenFile 
   if (error) return <aside className="side-panel"><div className="panel-error">{error}</div></aside>
   if (selection?.kind === 'folder') {
     return <FolderView detail={selection.detail} onOpenFile={onOpenFile} />
+  }
+  if (selection?.kind === 'subsystem') {
+    return <SubsystemView detail={selection.detail} onOpenFile={onOpenFile} />
   }
   if (!view) {
     return (
@@ -202,6 +212,41 @@ function FolderView({
               <button onClick={() => onOpenFile(f.path)} title={f.path}>
                 <span className="ref-name">{f.name}</span>
                 <span className="ref-path">{f.symbols || ''}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </aside>
+  )
+}
+
+/** A subsystem box from the poster: what it is, and every file in it. */
+function SubsystemView({
+  detail,
+  onOpenFile,
+}: {
+  detail: SubsystemDetail
+  onOpenFile: (path: string) => void
+}) {
+  return (
+    <aside className="side-panel">
+      <header className="panel-header">
+        <div className="panel-title-row">
+          <span className="badge badge-subsystem">subsystem</span>
+          <h2>{detail.name}</h2>
+        </div>
+        {detail.purpose ? <p className="panel-doc">{detail.purpose}</p> : null}
+        <p className="panel-doc muted">{detail.paths.length} files</p>
+      </header>
+      <div className="ref-list">
+        <div className="ref-toggle">Files</div>
+        <ul>
+          {detail.paths.map((path) => (
+            <li key={path}>
+              <button onClick={() => onOpenFile(path)} title={path}>
+                <span className="ref-name">{path.split('/').pop()}</span>
+                <span className="ref-path">{path}</span>
               </button>
             </li>
           ))}

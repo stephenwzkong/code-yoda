@@ -62,6 +62,7 @@ export function projectOverview(ir: IR, groups: RepoGroup[]): View {
     nodes,
     edges: betweenGroups(ir, groupOf),
     collapsed: false,
+    groups,
   }
 }
 

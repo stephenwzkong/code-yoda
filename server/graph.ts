@@ -46,6 +46,8 @@ export interface View {
   edges: ViewEdge[]
   /** true when low-degree nodes were folded into a `more` node */
   collapsed: boolean
+  /** poster view only: the full subsystem grouping behind the boxes */
+  groups?: Array<{ name: string; purpose: string; paths: string[] }>
 }
 
 export const DEFAULT_MAX_NODES = 60
