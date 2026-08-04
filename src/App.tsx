@@ -9,6 +9,7 @@ import {
   loadDiagram,
   peek,
   prefetchChildren,
+  PRIORITY_PREFETCH,
   warmUp,
   type Diagram,
 } from './diagram-cache.ts'
@@ -186,7 +187,11 @@ export function App() {
   const onNodeHover = useCallback(
     (node: ViewNode) => {
       if (!meta || (node.kind !== 'folder' && node.kind !== 'file')) return
-      void loadDiagram(meta.repoId, node.path).catch(() => undefined)
+      // Speculative: must never be queued at click priority, or a real click
+      // waits behind the backlog left by sweeping the pointer across the graph.
+      void loadDiagram(meta.repoId, node.path, false, PRIORITY_PREFETCH, 'hover').catch(
+        () => undefined,
+      )
     },
     [meta],
   )

@@ -14,6 +14,13 @@ interface Props {
   pendingLabel?: string
 }
 
+/**
+ * How long the pointer must rest on a node before we speculatively lay out its
+ * level. Long enough that crossing a node costs nothing, short enough to still
+ * beat the click that usually follows.
+ */
+const HOVER_DWELL_MS = 120
+
 /** Explains what the diagram's shapes and edge numbers mean. Collapsible. */
 function Legend({ scopeKind }: { scopeKind: 'dir' | 'file' }) {
   const [open, setOpen] = useState(false)
@@ -107,9 +114,14 @@ export function ChartPane({ diagram, selectedId, onSelect, onHover, pending, pen
         }
         onSelectRef.current(node)
       })
-      // Hovering reliably precedes clicking, which is enough lead time to lay
-      // out the next level before it is asked for.
-      el.addEventListener('mouseenter', () => onHoverRef.current?.(node), { once: true })
+      // Hovering precedes clicking, which is enough lead time to lay out the
+      // next level. Only fire once the pointer *rests* on a node: sweeping
+      // across a graph would otherwise queue a layout for every node crossed.
+      let dwell: ReturnType<typeof setTimeout> | undefined
+      el.addEventListener('mouseenter', () => {
+        dwell = setTimeout(() => onHoverRef.current?.(node), HOVER_DWELL_MS)
+      })
+      el.addEventListener('mouseleave', () => clearTimeout(dwell))
     }
   }, [diagram])
 
