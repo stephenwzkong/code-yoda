@@ -112,7 +112,17 @@ export function loadDiagram(
     return pending
   }
 
-  const promise = fetchView(repoId, scope, expand)
+  return startLoad(key, fetchView(repoId, scope, expand), priority, group)
+}
+
+/** Shared tail of loadDiagram: render a (possibly already fetched) view and cache it. */
+function startLoad(
+  key: string,
+  viewPromise: Promise<View>,
+  priority: number,
+  group: string,
+): Promise<Diagram> {
+  const promise = viewPromise
     .then(async (view) => {
       const { source, nodeById } = buildDiagram(view)
       const [rendered, task] = enqueueRender(source, priority, group)
@@ -141,7 +151,7 @@ let prefetchGeneration = 0
  * Render the levels the user is most likely to open next, during idle time, at
  * a priority that always yields to a real click.
  */
-export function prefetchChildren(repoId: string, view: View, limit = 8): () => void {
+export function prefetchChildren(repoId: string, view: View, limit = 3): () => void {
   const group = `prefetch:${++prefetchGeneration}`
   let cancelled = false
 
@@ -164,18 +174,34 @@ export function prefetchChildren(repoId: string, view: View, limit = 8): () => v
     if (cancelled || i >= targets.length) return
     idle(() => {
       if (cancelled) return
-      loadDiagram(repoId, targets[i], false, PRIORITY_PREFETCH, group)
+      prefetchOne(repoId, targets[i], group)
         .catch(() => undefined)
         .then(() => step(i + 1))
     })
   }
   step(0)
 
+  // Deliberately does NOT cancel work already queued. Rejecting a render that a
+  // click has since started awaiting would strand that click with no diagram.
   return () => {
     cancelled = true
-    // Drop this generation's queued work: it belongs to a level we have left.
-    for (const task of queue) if (task.group === group) task.cancelled = true
   }
+}
+
+/** Node count past which laying a view out speculatively costs more than it saves. */
+const PREFETCH_MAX_NODES = 40
+
+/**
+ * Prefetch one scope, but only render it if it is small. Fetching is ~3ms and
+ * always worth it; laying out a 60-node folder is a quarter-second of blocked
+ * main thread, and doing several of those makes the page feel frozen.
+ */
+async function prefetchOne(repoId: string, scope: string, group: string): Promise<void> {
+  const key = keyOf(repoId, scope, false)
+  if (cache.has(key) || inflight.has(key)) return
+  const view = await fetchView(repoId, scope, false)
+  if (view.nodes.length > PREFETCH_MAX_NODES) return
+  await startLoad(key, Promise.resolve(view), PRIORITY_PREFETCH, group)
 }
 
 export function invalidateRepo(repoId: string): void {

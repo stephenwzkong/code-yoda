@@ -123,7 +123,11 @@ export function SidePanel({ selection, loading, error, onOpenSymbol, onOpenFile 
       <RefList title={`Callers (${view.callers.length})`} items={view.callers} onOpen={onOpenSymbol} />
       <RefList title={`Callees (${view.callees.length})`} items={view.callees} onOpen={onOpenSymbol} />
 
-      <div className="panel-code" ref={codeRef} dangerouslySetInnerHTML={{ __html: html }} />
+      {view.code.trim() === '' ? (
+        <div className="panel-empty">This file is empty.</div>
+      ) : (
+        <div className="panel-code" ref={codeRef} dangerouslySetInnerHTML={{ __html: html }} />
+      )}
     </aside>
   )
 }
