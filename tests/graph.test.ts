@@ -125,6 +125,53 @@ describe('node cap', () => {
   })
 })
 
+describe('sparse levels', () => {
+  // A deeply nested repo (src/app/…) otherwise produces levels holding a single
+  // folder, which look identical to the level before and read as a broken click.
+  const nested: IR = {
+    root: '/repo',
+    files: [
+      { path: 'src/app/api/routes.ts', lang: 'ts', symbols: [] },
+      { path: 'src/app/db/client.ts', lang: 'ts', symbols: [] },
+      { path: 'src/app/main.ts', lang: 'ts', symbols: [] },
+    ],
+    edges: [
+      { from: 'src/app/api/routes.ts', to: 'src/app/db/client.ts', kind: 'import', confidence: 'resolved' },
+    ],
+  }
+
+  it('shows a step deeper instead of a single pass-through folder', () => {
+    const view = project(nested, 'src')
+    expect(view.nodes.map((n) => n.label).sort()).toEqual(['app/api', 'app/db', 'app/main.ts'])
+  })
+
+  it('still aggregates edges correctly across the deeper nodes', () => {
+    const view = project(nested, 'src')
+    expect(view.edges).toEqual([
+      expect.objectContaining({ from: 'src/app/api', to: 'src/app/db', count: 1 }),
+    ])
+  })
+
+  it('leaves a level alone once it has real branching', () => {
+    const view = project(nested, 'src/app')
+    expect(view.nodes.map((n) => n.label).sort()).toEqual(['api', 'db', 'main.ts'])
+  })
+
+  it('does not expand when that would blow past the readable limit', () => {
+    const wide: IR = {
+      root: '/repo',
+      files: Array.from({ length: 40 }, (_, i) => ({
+        path: `pkg/sub/f${i}.ts`,
+        lang: 'ts' as const,
+        symbols: [],
+      })),
+      edges: [],
+    }
+    // `pkg` holds one folder, but expanding it would mean 40 nodes.
+    expect(project(wide, 'pkg').nodes.map((n) => n.label)).toEqual(['sub'])
+  })
+})
+
 describe('breadcrumbs', () => {
   it('walks from the repo label down to the current scope', () => {
     expect(breadcrumbsFor('src/api/handlers.ts', 'my-repo')).toEqual([

@@ -81,25 +81,26 @@ export function project(
 
 type Partial_ = Pick<View, 'scope' | 'scopeKind' | 'nodes' | 'edges'>
 
-function projectDir(ir: IR, scope: string): Partial_ {
+/** A level with fewer entries than this is expanded a step deeper. */
+const SPARSE_LEVEL = 6
+/** …but never past this many nodes, or the view stops being readable. */
+const SPARSE_EXPANDED_MAX = 24
+
+/** The immediate children of a directory scope. */
+function childrenOf(ir: IR, scope: string): ViewNode[] {
   const prefix = scope ? `${scope}/` : ''
   const nodes = new Map<string, ViewNode>()
 
-  /** Which node at this level does a file belong to? */
-  const bucketOf = (filePath: string): string | undefined => {
-    if (prefix && !filePath.startsWith(prefix)) return undefined
-    const rest = filePath.slice(prefix.length)
-    if (!rest) return undefined
-    const slash = rest.indexOf('/')
-    return prefix + (slash === -1 ? rest : rest.slice(0, slash))
-  }
-
   for (const file of ir.files) {
-    const id = bucketOf(file.path)
-    if (!id) continue
+    if (prefix && !file.path.startsWith(prefix)) continue
+    const rest = file.path.slice(prefix.length)
+    if (!rest) continue
+    const slash = rest.indexOf('/')
+    const id = prefix + (slash === -1 ? rest : rest.slice(0, slash))
+
     const existing = nodes.get(id)
     if (existing) {
-      existing.count = (existing.count ?? 0) + (existing.kind === 'folder' ? 1 : 0)
+      if (existing.kind === 'folder') existing.count = (existing.count ?? 0) + 1
       continue
     }
     const isFolder = id !== file.path
@@ -112,9 +113,36 @@ function projectDir(ir: IR, scope: string): Partial_ {
       count: isFolder ? 1 : file.symbols.length,
     })
   }
+  return [...nodes.values()]
+}
+
+function projectDir(ir: IR, scope: string): Partial_ {
+  const prefix = scope ? `${scope}/` : ''
+  let nodes = childrenOf(ir, scope)
+
+  // A folder like `src/` that holds one subfolder produces a level that looks
+  // identical to the one before it, so clicking into it reads as "nothing
+  // happened". When a level is this sparse, show a step deeper instead.
+  if (nodes.length <= SPARSE_LEVEL) {
+    const expanded: ViewNode[] = []
+    for (const node of nodes) {
+      const sub = node.kind === 'folder' ? childrenOf(ir, node.path) : []
+      if (sub.length > 0 && expanded.length + sub.length <= SPARSE_EXPANDED_MAX) expanded.push(...sub)
+      else expanded.push(node)
+    }
+    if (expanded.length > nodes.length) {
+      // Labels stay relative to the scope, so the extra depth is visible.
+      nodes = expanded.map((n) => ({ ...n, label: n.path.slice(prefix.length) }))
+    }
+  }
+
+  // Longest-prefix match, so bucketing works whatever depth each node sits at.
+  const byLength = [...nodes].sort((a, b) => b.path.length - a.path.length)
+  const bucketOf = (filePath: string): string | undefined =>
+    byLength.find((n) => filePath === n.path || filePath.startsWith(`${n.path}/`))?.id
 
   const edges = aggregate(ir, (id) => bucketOf(fileOf(id)))
-  return { scope, scopeKind: 'dir', nodes: [...nodes.values()].sort(byKindThenLabel), edges }
+  return { scope, scopeKind: 'dir', nodes: nodes.sort(byKindThenLabel), edges }
 }
 
 function projectFile(ir: IR, scope: string): Partial_ {
