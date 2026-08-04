@@ -85,3 +85,11 @@ export function fetchFile(repoId: string, path: string): Promise<FileDetail> {
 export function search(repoId: string, q: string): Promise<SearchHit[]> {
   return get<SearchHit[]>(`/api/search?${new URLSearchParams({ repoId, q })}`)
 }
+
+export function fetchOverview(repoId: string, scope: string): Promise<View> {
+  return get<View>(`/api/overview?${new URLSearchParams({ repoId, scope })}`)
+}
+
+export function overviewAvailable(): Promise<{ available: boolean }> {
+  return get<{ available: boolean }>('/api/overview/available')
+}

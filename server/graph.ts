@@ -59,9 +59,14 @@ export function breadcrumbsFor(scope: string, rootLabel: string): Array<{ label:
 /**
  * Projects the IR into a single readable level.
  *
- * A dir scope shows immediate children (subfolders collapsed, files expanded)
- * with edges aggregated across everything beneath them. A file scope shows that
- * file's symbols, plus stub nodes for calls crossing the file boundary.
+ * Diagrams stop at files: a scope shows the folders and files it contains, with
+ * edges aggregated across everything beneath them. A file's own functions are
+ * not diagrammed — dense intra-file call graphs read poorly and were the most
+ * expensive views to lay out. A file's symbols and its callers/callees are
+ * shown in the side panel instead, where they are a navigable list.
+ *
+ * A file scope resolves to its parent directory, so a stale link or cache entry
+ * self-corrects rather than 404ing.
  */
 export function project(
   ir: IR,
@@ -70,13 +75,17 @@ export function project(
 ): View {
   const rootLabel = opts.rootLabel ?? 'root'
   const maxNodes = opts.maxNodes ?? DEFAULT_MAX_NODES
-  const isFile = ir.files.some((f) => f.path === scope)
-  const view = isFile ? projectFile(ir, scope) : projectDir(ir, scope)
+  const dirScope = ir.files.some((f) => f.path === scope) ? parentOf(scope) : scope
+  const view = projectDir(ir, dirScope)
   return {
     ...view,
-    breadcrumbs: breadcrumbsFor(scope, rootLabel),
+    breadcrumbs: breadcrumbsFor(dirScope, rootLabel),
     ...capNodes(view.nodes, view.edges, maxNodes, opts.expand ?? false),
   }
+}
+
+function parentOf(path: string): string {
+  return path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : ''
 }
 
 type Partial_ = Pick<View, 'scope' | 'scopeKind' | 'nodes' | 'edges'>
@@ -143,80 +152,6 @@ function projectDir(ir: IR, scope: string): Partial_ {
 
   const edges = aggregate(ir, (id) => bucketOf(fileOf(id)))
   return { scope, scopeKind: 'dir', nodes: nodes.sort(byKindThenLabel), edges }
-}
-
-function projectFile(ir: IR, scope: string): Partial_ {
-  const file = ir.files.find((f) => f.path === scope)!
-  const nodes = new Map<string, ViewNode>()
-  const inFile = new Set(file.symbols.map((s) => s.id))
-
-  for (const sym of file.symbols) {
-    nodes.set(sym.id, {
-      id: sym.id,
-      label: sym.name,
-      kind: sym.kind,
-      lang: file.lang,
-      path: file.path,
-      symbolId: sym.id,
-      line: sym.line,
-    })
-  }
-
-  const edges: ViewEdge[] = []
-  const seen = new Map<string, ViewEdge>()
-
-  /** Calls that start or end at module scope are attributed to the file itself. */
-  const ensureModuleNode = () => {
-    if (nodes.has(file.path)) return
-    nodes.set(file.path, {
-      id: file.path,
-      label: '(module scope)',
-      kind: 'module',
-      lang: file.lang,
-      path: file.path,
-      line: 1,
-    })
-  }
-
-  const ensureExternal = (id: string) => {
-    if (nodes.has(id)) return
-    const owner = fileOf(id)
-    const sym = ir.files.find((f) => f.path === owner)?.symbols.find((s) => s.id === id)
-    const base = owner.split('/').pop() ?? owner
-    nodes.set(id, {
-      id,
-      label: sym ? `${sym.name}\n${base}` : base,
-      kind: 'external',
-      path: owner,
-      symbolId: sym ? id : undefined,
-      line: sym?.line,
-    })
-  }
-
-  const push = (edge: ViewEdge) => {
-    const key = `${edge.from} ${edge.to} ${edge.kind}`
-    const prior = seen.get(key)
-    if (prior) {
-      prior.count += edge.count
-      if (edge.confidence === 'resolved') prior.confidence = 'resolved'
-      return
-    }
-    seen.set(key, edge)
-    edges.push(edge)
-  }
-
-  for (const e of ir.edges) {
-    if (e.kind === 'import') continue // imports are a file-level relationship
-    const fromHere = inFile.has(e.from) || e.from === file.path
-    const toHere = inFile.has(e.to) || e.to === file.path
-    if (!fromHere && !toHere) continue
-    if (e.from === file.path || e.to === file.path) ensureModuleNode()
-    if (!fromHere) ensureExternal(e.from)
-    if (!toHere) ensureExternal(e.to)
-    push({ from: e.from, to: e.to, kind: 'call', count: 1, confidence: e.confidence })
-  }
-
-  return { scope, scopeKind: 'file', nodes: [...nodes.values()].sort(byKindThenLabel), edges }
 }
 
 function aggregate(ir: IR, bucketOf: (id: string) => string | undefined): ViewEdge[] {

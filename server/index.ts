@@ -4,6 +4,8 @@ import express from 'express'
 import { analyze, getAnalysis, type Analysis } from './analyze.ts'
 import { DEFAULT_MAX_NODES, project } from './graph.ts'
 import { IngestError, resolveSource } from './ingest.ts'
+import { buildOverview, credentialsAvailable, type RepoGroup } from './llm.ts'
+import { projectOverview } from './overview-graph.ts'
 import { fileOf, type IR } from './types.ts'
 
 const app = express()
@@ -67,6 +69,38 @@ app.get('/api/view', (req, res, next) => {
   } catch (err) {
     next(err)
   }
+})
+
+/** Cached per repo: the grouping costs a model call, and it is stable input. */
+const overviews = new Map<string, RepoGroup[]>()
+
+app.get('/api/overview', async (req, res, next) => {
+  try {
+    const { ir } = requireAnalysis(req.query.repoId)
+    const repoId = String(req.query.repoId)
+
+    let groups = overviews.get(repoId)
+    if (!groups) {
+      if (!credentialsAvailable()) {
+        throw new HttpError(
+          503,
+          'The AI view needs Anthropic credentials. Set ANTHROPIC_API_KEY and restart, then try again.',
+        )
+      }
+      const result = await buildOverview(ir)
+      groups = result.groups
+      overviews.set(repoId, groups)
+    }
+
+    res.json(projectOverview(ir, groups, String(req.query.scope ?? '') || undefined))
+  } catch (err) {
+    next(err instanceof HttpError ? err : new HttpError(502, (err as Error).message))
+  }
+})
+
+/** Lets the UI disable the AI toggle with a reason rather than failing on click. */
+app.get('/api/overview/available', (_req, res) => {
+  res.json({ available: credentialsAvailable() })
 })
 
 app.get('/api/source', (req, res, next) => {

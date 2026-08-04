@@ -1,7 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ViewNode } from '../server/graph.ts'
-import { afterPaint } from './after-paint.ts'
-import { analyzeSource, fetchFile, fetchSymbol, search, type Meta, type SearchHit } from './api.ts'
+import {
+  analyzeSource,
+  fetchFile,
+  fetchSymbol,
+  overviewAvailable,
+  search,
+  type Meta,
+  type SearchHit,
+} from './api.ts'
 import { Breadcrumbs } from './Breadcrumbs.tsx'
 import { ChartPane } from './ChartPane.tsx'
 import {
@@ -12,17 +19,25 @@ import {
   PRIORITY_PREFETCH,
   warmUp,
   type Diagram,
+  type DiagramMode,
 } from './diagram-cache.ts'
 import { warmUpHighlighter } from './highlight.ts'
 import { SidePanel, type Selection } from './SidePanel.tsx'
 
 const LAST_SOURCE_KEY = 'code-yoda:last-source'
 
+/** The folder a path lives in — diagrams are scoped to folders, never files. */
+function parentDir(path: string): string {
+  return path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : ''
+}
+
 export function App() {
   const [sourceInput, setSourceInput] = useState(() => localStorage.getItem(LAST_SOURCE_KEY) ?? '')
   const [meta, setMeta] = useState<Meta | null>(null)
   const [scope, setScope] = useState('')
   const [expanded, setExpanded] = useState(false)
+  const [mode, setMode] = useState<DiagramMode>('analyzed')
+  const [aiAvailable, setAiAvailable] = useState(false)
   const [diagram, setDiagram] = useState<Diagram | null>(null)
   const [chartPending, setChartPending] = useState(false)
   const [selection, setSelection] = useState<Selection | null>(null)
@@ -35,8 +50,6 @@ export function App() {
   const [query, setQuery] = useState('')
   const [panelWidth, setPanelWidth] = useState(520)
   const resizing = useRef(false)
-  /** Work to run once the newly selected diagram is actually on screen. */
-  const afterDiagramPaints = useRef<(() => void) | null>(null)
 
   const runAnalysis = useCallback(async () => {
     setAnalyzing(true)
@@ -66,6 +79,9 @@ export function App() {
   useEffect(() => {
     warmUp()
     warmUpHighlighter()
+    void overviewAvailable()
+      .then((r) => setAiAvailable(r.available))
+      .catch(() => setAiAvailable(false))
   }, [])
 
   // Load the diagram whenever the repo or scope changes, then render the levels
@@ -76,16 +92,18 @@ export function App() {
     let stopPrefetch: (() => void) | undefined
 
     // A cached level swaps in synchronously — no spinner, no flash of emptiness.
-    const cached = peek(meta.repoId, scope, expanded)
+    const cached = peek(meta.repoId, scope, expanded, mode)
     if (cached) setDiagram(cached)
     else setChartPending(true)
 
-    loadDiagram(meta.repoId, scope, expanded)
+    loadDiagram(meta.repoId, scope, expanded, undefined, undefined, mode)
       .then((next) => {
         if (cancelled) return
         setDiagram(next)
         setError(null)
-        stopPrefetch = prefetchChildren(meta.repoId, next.view)
+        // Prefetch only walks the deterministic tree; AI levels are two deep
+        // and each one is already resolved from the cached grouping.
+        if (mode === 'analyzed') stopPrefetch = prefetchChildren(meta.repoId, next.view)
       })
       .catch((err: Error) => {
         if (!cancelled) setError(err.message)
@@ -98,7 +116,7 @@ export function App() {
       cancelled = true
       stopPrefetch?.()
     }
-  }, [meta, scope, expanded])
+  }, [meta, scope, expanded, mode])
 
   const openSymbol = useCallback(
     async (symbolId: string) => {
@@ -151,12 +169,9 @@ export function App() {
           goTo(node.path)
           return
         case 'file':
-          // Files do both: drill the diagram in, and show the source alongside.
-          // The panel is deferred until the new diagram has painted — opening a
-          // file costs a fetch plus syntax highlighting, and doing that first
-          // would hold the main thread while the chart waits.
-          goTo(node.path)
-          afterDiagramPaints.current = () => void openFile(node.path)
+          // Diagrams stop at files, so this only opens the source — the chart
+          // stays where it is and keeps the file's context around it visible.
+          void openFile(node.path)
           return
         case 'module':
           void openFile(node.path)
@@ -172,28 +187,17 @@ export function App() {
     [goTo, openFile, openSymbol],
   )
 
-  // Run deferred panel work only after the browser has painted the new diagram.
-  // The ref is cleared inside the callback rather than in a cleanup, so React's
-  // double-invoked effects in dev cannot cancel the work before it runs.
-  useEffect(() => {
-    if (!diagram || !afterDiagramPaints.current) return
-    afterPaint(() => {
-      const run = afterDiagramPaints.current
-      afterDiagramPaints.current = null
-      run?.()
-    })
-  }, [diagram])
-
   const onNodeHover = useCallback(
     (node: ViewNode) => {
-      if (!meta || (node.kind !== 'folder' && node.kind !== 'file')) return
+      if (!meta || mode !== 'analyzed') return
+      if (node.kind !== 'folder' && node.kind !== 'file') return
       // Speculative: must never be queued at click priority, or a real click
       // waits behind the backlog left by sweeping the pointer across the graph.
       void loadDiagram(meta.repoId, node.path, false, PRIORITY_PREFETCH, 'hover').catch(
         () => undefined,
       )
     },
-    [meta],
+    [meta, mode],
   )
 
   // Debounced symbol search.
@@ -213,13 +217,11 @@ export function App() {
   const onHit = (hit: SearchHit) => {
     setQuery('')
     setHits([])
-    if (hit.kind === 'file') {
-      goTo(hit.path)
-      void openFile(hit.path)
-    } else {
-      goTo(hit.path)
-      void openSymbol(hit.id)
-    }
+    // Diagrams stop at files, so show the folder the hit lives in and open the
+    // file or symbol itself in the panel.
+    goTo(parentDir(hit.path))
+    if (hit.kind === 'file') void openFile(hit.path)
+    else void openSymbol(hit.id)
   }
 
   useEffect(() => {
@@ -283,6 +285,35 @@ export function App() {
           </div>
         ) : null}
         {meta ? (
+          <div className="mode-toggle" role="group" aria-label="Diagram source">
+            <button
+              className={mode === 'analyzed' ? 'active' : ''}
+              onClick={() => {
+                setMode('analyzed')
+                goTo('')
+              }}
+              title="Folders and files, with edges resolved by the compiler and Python ast"
+            >
+              Analyzed
+            </button>
+            <button
+              className={mode === 'ai' ? 'active' : ''}
+              disabled={!aiAvailable}
+              onClick={() => {
+                setMode('ai')
+                goTo('')
+              }}
+              title={
+                aiAvailable
+                  ? 'Subsystems grouped and named by Claude, over the same resolved edges'
+                  : 'Needs ANTHROPIC_API_KEY set on the server'
+              }
+            >
+              AI subsystems
+            </button>
+          </div>
+        ) : null}
+        {meta ? (
           <div className="repo-stats">
             {meta.fileCount} files · {meta.symbolCount} symbols · {meta.edgeCount} edges
             {meta.cached ? ' · cached' : ` · ${(meta.elapsedMs / 1000).toFixed(1)}s`}
@@ -332,7 +363,7 @@ export function App() {
             error={panelError}
             onOpenSymbol={openSymbol}
             onOpenFile={(path) => {
-              goTo(path)
+              goTo(parentDir(path))
               void openFile(path)
             }}
           />

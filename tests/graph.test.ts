@@ -67,33 +67,37 @@ describe('directory scope', () => {
   })
 })
 
-describe('file scope', () => {
-  const view = project(ir, 'src/api/handlers.ts')
+describe('file scopes resolve to their folder', () => {
+  // Diagrams stop at files: a file's functions are shown in the side panel as
+  // a navigable list, not as an intra-file call graph.
+  it('projects the parent folder rather than the file itself', () => {
+    const view = project(ir, 'src/api/handlers.ts')
+    expect(view.scope).toBe('src/api')
+    expect(view.nodes.map((n) => n.id).sort()).toEqual(['src/api/handlers.ts', 'src/api/routes.ts'])
+  })
 
-  it('shows the file symbols', () => {
-    expect(view.scopeKind).toBe('file')
-    expect(view.nodes.filter((n) => n.kind === 'function').map((n) => n.label).sort()).toEqual([
-      'handle',
-      'parse',
+  it('reports the folder in the breadcrumbs, so navigation stays consistent', () => {
+    expect(project(ir, 'src/api/handlers.ts', { rootLabel: 'repo' }).breadcrumbs).toEqual([
+      { label: 'repo', scope: '' },
+      { label: 'src', scope: 'src' },
+      { label: 'api', scope: 'src/api' },
     ])
   })
 
-  it('adds a module-scope node for top-level calls', () => {
-    expect(view.nodes.find((n) => n.kind === 'module')?.label).toBe('(module scope)')
+  it('resolves a repo-root file to the root scope', () => {
+    const rootFile: IR = {
+      root: '/repo',
+      files: [{ path: 'setup.py', lang: 'py', symbols: [] }],
+      edges: [],
+    }
+    expect(project(rootFile, 'setup.py').scope).toBe('')
   })
 
-  it('stubs symbols on the other side of the file boundary', () => {
-    const external = view.nodes.filter((n) => n.kind === 'external').map((n) => n.id)
-    expect(external).toEqual(expect.arrayContaining(['src/api/routes.ts#register', 'lib/util.py#slugify']))
-  })
-
-  it('preserves heuristic confidence so the UI can dash the edge', () => {
-    const guess = view.edges.find((e) => e.to === 'lib/util.py#slugify')
-    expect(guess?.confidence).toBe('heuristic')
-  })
-
-  it('omits import edges, which are a file-level relationship', () => {
-    expect(view.edges.every((e) => e.kind === 'call')).toBe(true)
+  it('never emits function, method or class nodes', () => {
+    for (const scope of ['', 'src', 'src/api', 'src/api/handlers.ts']) {
+      const kinds = new Set(project(ir, scope).nodes.map((n) => n.kind))
+      expect([...kinds].every((k) => k === 'folder' || k === 'file' || k === 'more')).toBe(true)
+    }
   })
 })
 

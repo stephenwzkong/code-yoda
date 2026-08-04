@@ -1,6 +1,6 @@
 import mermaid from 'mermaid'
 import type { View, ViewNode } from '../server/graph.ts'
-import { fetchView } from './api.ts'
+import { fetchOverview, fetchView } from './api.ts'
 import { buildDiagram } from './mermaid-source.ts'
 
 mermaid.initialize({
@@ -43,8 +43,11 @@ const inflight = new Map<string, Promise<Diagram>>()
 let pumping = false
 let renderSeq = 0
 
-function keyOf(repoId: string, scope: string, expand: boolean): string {
-  return `${repoId} ${scope} ${expand ? 'x' : ''}`
+/** Which projection produced a diagram: the analyzers, or Claude's grouping. */
+export type DiagramMode = 'analyzed' | 'ai'
+
+function keyOf(repoId: string, scope: string, expand: boolean, mode: DiagramMode = 'analyzed'): string {
+  return `${repoId} ${scope} ${expand ? 'x' : ''} ${mode}`
 }
 
 function enqueueRender(source: string, priority: number, group: string): [Promise<string>, RenderTask] {
@@ -84,8 +87,13 @@ async function pump(): Promise<void> {
   }
 }
 
-export function peek(repoId: string, scope: string, expand: boolean): Diagram | undefined {
-  return cache.get(keyOf(repoId, scope, expand))
+export function peek(
+  repoId: string,
+  scope: string,
+  expand: boolean,
+  mode: DiagramMode = 'analyzed',
+): Diagram | undefined {
+  return cache.get(keyOf(repoId, scope, expand, mode))
 }
 
 /** Fetch + build + render a scope, reusing any cached or in-flight result. */
@@ -95,8 +103,9 @@ export function loadDiagram(
   expand = false,
   priority = PRIORITY_USER,
   group = 'user',
+  mode: DiagramMode = 'analyzed',
 ): Promise<Diagram> {
-  const key = keyOf(repoId, scope, expand)
+  const key = keyOf(repoId, scope, expand, mode)
   const hit = cache.get(key)
   if (hit) return Promise.resolve(hit)
 
@@ -112,7 +121,8 @@ export function loadDiagram(
     return pending
   }
 
-  return startLoad(key, fetchView(repoId, scope, expand), priority, group)
+  const view = mode === 'ai' ? fetchOverview(repoId, scope) : fetchView(repoId, scope, expand)
+  return startLoad(key, view, priority, group)
 }
 
 /** Shared tail of loadDiagram: render a (possibly already fetched) view and cache it. */

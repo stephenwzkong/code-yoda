@@ -731,3 +731,40 @@ input {
 .panel-code .line-anchor {
   box-shadow: inset 3px 0 0 var(--accent);
 }
+
+/* Toggle between the analyzed projection and Claude's subsystem grouping. */
+.mode-toggle {
+  display: flex;
+  flex: 0 0 auto;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.mode-toggle button {
+  padding: 5px 11px;
+  background: var(--bg-input);
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.mode-toggle button + button {
+  border-left: 1px solid var(--border);
+}
+
+.mode-toggle button:hover:not(:disabled) {
+  color: var(--text);
+}
+
+.mode-toggle button.active {
+  background: var(--accent);
+  color: #06231b;
+  font-weight: 600;
+}
+
+.mode-toggle button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
