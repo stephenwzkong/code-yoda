@@ -9,9 +9,12 @@ interface Props {
   onSelect: (node: ViewNode) => void
   /** Called when the pointer enters a node, so the next level can be prepared. */
   onHover?: (node: ViewNode) => void
+  /** True while a level that was not already laid out is being prepared. */
+  pending?: boolean
+  pendingLabel?: string
 }
 
-export function ChartPane({ diagram, selectedId, onSelect, onHover }: Props) {
+export function ChartPane({ diagram, selectedId, onSelect, onHover, pending, pendingLabel }: Props) {
   const hostRef = useRef<HTMLDivElement>(null)
   const [transform, setTransform] = useState({ x: 0, y: 0, scale: 1 })
   const dragRef = useRef<{ x: number; y: number; ox: number; oy: number } | null>(null)
@@ -47,6 +50,11 @@ export function ChartPane({ diagram, selectedId, onSelect, onHover }: Props) {
       el.classList.add('yoda-node')
       el.addEventListener('click', (event) => {
         event.stopPropagation()
+        // Acknowledge the click on the node itself, before any work starts —
+        // otherwise a slow level looks like the click was missed.
+        if (node.kind === 'folder' || node.kind === 'file' || node.kind === 'more') {
+          el.classList.add('yoda-activating')
+        }
         onSelectRef.current(node)
       })
       // Hovering reliably precedes clicking, which is enough lead time to lay
@@ -91,7 +99,15 @@ export function ChartPane({ diagram, selectedId, onSelect, onHover }: Props) {
   }
 
   return (
-    <div className="chart-pane">
+    <div className={pending ? 'chart-pane is-pending' : 'chart-pane'}>
+      {pending ? (
+        <div className="chart-overlay" role="status" aria-live="polite">
+          <div className="chart-spinner" />
+          <span>
+            Laying out {pendingLabel ? <strong>{pendingLabel}</strong> : 'diagram'}…
+          </span>
+        </div>
+      ) : null}
       <div
         className="chart-viewport"
         onWheel={onWheel}

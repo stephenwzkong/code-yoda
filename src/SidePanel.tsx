@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { FileDetail, SymbolDetail, SymbolRef } from './api.ts'
+import { afterPaint } from './after-paint.ts'
 import { highlight } from './highlight.ts'
 
 export type Selection =
@@ -59,11 +60,16 @@ export function SidePanel({ selection, loading, error, onOpenSymbol, onOpenFile 
       return
     }
     let cancelled = false
-    highlight(view.code, view.lang, view.range).then((out) => {
-      if (!cancelled) setHtml(out)
+    // Syntax highlighting is synchronous CPU work. Wait for a paint first so it
+    // can never delay the diagram swapping in.
+    const cancel = afterPaint(() => {
+      highlight(view.code, view.lang, view.range).then((out) => {
+        if (!cancelled) setHtml(out)
+      })
     })
     return () => {
       cancelled = true
+      cancel()
     }
   }, [view])
 

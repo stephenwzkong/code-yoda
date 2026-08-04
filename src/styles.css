@@ -247,30 +247,86 @@ input {
 
 /* ---------- chart ---------- */
 
-/* Thin top-of-pane progress bar while a level that is not cached lays out. */
-.chart-progress {
-  position: relative;
-  height: 2px;
-  flex: 0 0 auto;
-  overflow: hidden;
-  background: var(--border);
-}
-
-.chart-progress::after {
-  content: '';
+/* Shown while a level that was not pre-rendered is being laid out. */
+.chart-overlay {
   position: absolute;
-  inset: 0 auto 0 0;
-  width: 35%;
-  background: var(--accent);
-  animation: chart-progress-slide 0.9s ease-in-out infinite;
+  z-index: 5;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 16px;
+  background: var(--bg-raised);
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.55);
+  color: var(--text);
+  animation: overlay-in 0.12s ease-out;
 }
 
-@keyframes chart-progress-slide {
+.chart-overlay strong {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+@keyframes overlay-in {
   from {
-    transform: translateX(-100%);
+    opacity: 0;
+    transform: translate(-50%, -6px);
   }
   to {
-    transform: translateX(350%);
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+.chart-spinner {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 auto;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+.empty-state .chart-spinner {
+  margin: 0 auto 12px;
+  width: 22px;
+  height: 22px;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* The stale diagram stays visible but recedes, so it reads as "being replaced". */
+.chart-pane.is-pending .chart-stage {
+  opacity: 0.35;
+  filter: saturate(0.5);
+  transition: opacity 0.15s ease-out;
+}
+
+.chart-pane.is-pending .chart-viewport {
+  cursor: progress;
+}
+
+/* Instant acknowledgement of the click, before any layout work begins. */
+.yoda-activating rect,
+.yoda-activating polygon,
+.yoda-activating path {
+  stroke: var(--accent) !important;
+  stroke-width: 3px !important;
+  animation: node-pulse 0.7s ease-in-out infinite;
+}
+
+@keyframes node-pulse {
+  50% {
+    opacity: 0.55;
   }
 }
 

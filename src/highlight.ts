@@ -22,6 +22,25 @@ function getHighlighter(): Promise<HighlighterCore> {
 }
 
 /**
+ * Load the WASM regex engine and grammars ahead of time. That first load costs
+ * ~700ms, and without this it lands on the first file the user opens, blocking
+ * the diagram from swapping in.
+ */
+export function warmUpHighlighter(): void {
+  const start = () => {
+    void getHighlighter()
+      // Touch both grammars so the first real call is pure tokenizing.
+      .then((h) => {
+        h.codeToHtml('x = 1', { lang: 'python', theme: 'github-dark' })
+        h.codeToHtml('const x = 1', { lang: 'tsx', theme: 'github-dark' })
+      })
+      .catch(() => undefined)
+  }
+  if (typeof requestIdleCallback === 'function') requestIdleCallback(() => start(), { timeout: 1500 })
+  else setTimeout(start, 300)
+}
+
+/**
  * Renders code to HTML, tagging every line with `data-line` so the panel can
  * scroll to a symbol, and marking the symbol's own range for highlighting.
  */

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ViewNode } from '../server/graph.ts'
+import { afterPaint } from './after-paint.ts'
 import { analyzeSource, fetchFile, fetchSymbol, search, type Meta, type SearchHit } from './api.ts'
 import { Breadcrumbs } from './Breadcrumbs.tsx'
 import { ChartPane } from './ChartPane.tsx'
@@ -11,6 +12,7 @@ import {
   warmUp,
   type Diagram,
 } from './diagram-cache.ts'
+import { warmUpHighlighter } from './highlight.ts'
 import { SidePanel, type Selection } from './SidePanel.tsx'
 
 const LAST_SOURCE_KEY = 'code-yoda:last-source'
@@ -32,6 +34,8 @@ export function App() {
   const [query, setQuery] = useState('')
   const [panelWidth, setPanelWidth] = useState(520)
   const resizing = useRef(false)
+  /** Work to run once the newly selected diagram is actually on screen. */
+  const afterDiagramPaints = useRef<(() => void) | null>(null)
 
   const runAnalysis = useCallback(async () => {
     setAnalyzing(true)
@@ -55,8 +59,13 @@ export function App() {
     }
   }, [sourceInput])
 
-  // Mermaid's engine warm-up is ~60ms; pay it while the empty state is on screen.
-  useEffect(warmUp, [])
+  // Mermaid (~60ms) and Shiki (~700ms of WASM + grammars) both have a one-time
+  // start-up cost. Pay both while the empty state is on screen rather than on
+  // the user's first diagram and first opened file.
+  useEffect(() => {
+    warmUp()
+    warmUpHighlighter()
+  }, [])
 
   // Load the diagram whenever the repo or scope changes, then render the levels
   // below it in the background so the next click has nothing left to compute.
@@ -142,8 +151,11 @@ export function App() {
           return
         case 'file':
           // Files do both: drill the diagram in, and show the source alongside.
+          // The panel is deferred until the new diagram has painted — opening a
+          // file costs a fetch plus syntax highlighting, and doing that first
+          // would hold the main thread while the chart waits.
           goTo(node.path)
-          void openFile(node.path)
+          afterDiagramPaints.current = () => void openFile(node.path)
           return
         case 'module':
           void openFile(node.path)
@@ -158,6 +170,18 @@ export function App() {
     },
     [goTo, openFile, openSymbol],
   )
+
+  // Run deferred panel work only after the browser has painted the new diagram.
+  // The ref is cleared inside the callback rather than in a cleanup, so React's
+  // double-invoked effects in dev cannot cancel the work before it runs.
+  useEffect(() => {
+    if (!diagram || !afterDiagramPaints.current) return
+    afterPaint(() => {
+      const run = afterDiagramPaints.current
+      afterDiagramPaints.current = null
+      run?.()
+    })
+  }, [diagram])
 
   const onNodeHover = useCallback(
     (node: ViewNode) => {
@@ -273,16 +297,18 @@ export function App() {
           {diagram ? (
             <>
               <Breadcrumbs crumbs={diagram.view.breadcrumbs} onNavigate={goTo} />
-              {chartPending ? <div className="chart-progress" /> : null}
               <ChartPane
                 diagram={diagram}
                 selectedId={selectedNodeId}
                 onSelect={onNodeSelect}
                 onHover={onNodeHover}
+                pending={chartPending}
+                pendingLabel={scope.split('/').pop()}
               />
             </>
           ) : chartPending ? (
             <div className="empty-state">
+              <div className="chart-spinner" />
               <p>Laying out the diagram…</p>
             </div>
           ) : (
