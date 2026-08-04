@@ -1,3 +1,6 @@
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
 import Anthropic from '@anthropic-ai/sdk'
 import type { IR } from './types.ts'
 
@@ -27,14 +30,57 @@ export interface OverviewResult {
 
 const MODEL = 'claude-opus-5'
 
+export type AuthMethod = 'api-key' | 'auth-token' | 'claude-account' | 'none'
+
+export interface CredentialStatus {
+  available: boolean
+  method: AuthMethod
+  /** Human-readable description of what was found, for the UI. */
+  detail: string
+}
+
 /**
- * Credentials resolve from ANTHROPIC_API_KEY, ANTHROPIC_AUTH_TOKEN, or an
- * `ant auth login` profile — the SDK checks all three. We only report whether
- * *something* is configured so the UI can disable the AI toggle with a reason
- * instead of failing on click.
+ * Where the `ant` CLI stores an OAuth profile after `ant auth login`. The SDK
+ * reads it automatically, so a bare `new Anthropic()` works with no env var —
+ * but only if we notice it exists and enable the toggle.
  */
+function claudeAccountProfile(): string | null {
+  const configDir =
+    process.env.ANTHROPIC_CONFIG_DIR ?? path.join(os.homedir(), '.config', 'anthropic')
+  try {
+    const profiles = fs
+      .readdirSync(path.join(configDir, 'credentials'))
+      .filter((name) => name.endsWith('.json'))
+    if (profiles.length === 0) return null
+    const active = process.env.ANTHROPIC_PROFILE
+    if (active && profiles.includes(`${active}.json`)) return active
+    return profiles[0].replace(/\.json$/, '')
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Two ways to authenticate, matching the SDK's own resolution order: an API key
+ * in the environment, or a signed-in Claude account. Reported separately so the
+ * UI can tell the user which one is in use, or how to set either one up.
+ */
+export function credentialStatus(): CredentialStatus {
+  if (process.env.ANTHROPIC_API_KEY) {
+    return { available: true, method: 'api-key', detail: 'ANTHROPIC_API_KEY' }
+  }
+  if (process.env.ANTHROPIC_AUTH_TOKEN) {
+    return { available: true, method: 'auth-token', detail: 'ANTHROPIC_AUTH_TOKEN' }
+  }
+  const profile = claudeAccountProfile()
+  if (profile) {
+    return { available: true, method: 'claude-account', detail: `Claude account (${profile})` }
+  }
+  return { available: false, method: 'none', detail: 'no credentials found' }
+}
+
 export function credentialsAvailable(): boolean {
-  return Boolean(process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN)
+  return credentialStatus().available
 }
 
 const SCHEMA = {

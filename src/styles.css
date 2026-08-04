@@ -768,3 +768,15 @@ input {
   opacity: 0.4;
   cursor: not-allowed;
 }
+
+.banner.info {
+  background: #10261f;
+  color: #a7e6cd;
+}
+
+.banner code {
+  padding: 1px 5px;
+  background: rgba(0, 0, 0, 0.35);
+  border-radius: 4px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}

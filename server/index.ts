@@ -4,7 +4,7 @@ import express from 'express'
 import { analyze, getAnalysis, type Analysis } from './analyze.ts'
 import { DEFAULT_MAX_NODES, project } from './graph.ts'
 import { IngestError, resolveSource } from './ingest.ts'
-import { buildOverview, credentialsAvailable, type RepoGroup } from './llm.ts'
+import { buildOverview, credentialsAvailable, credentialStatus, type RepoGroup } from './llm.ts'
 import { projectOverview } from './overview-graph.ts'
 import { fileOf, type IR } from './types.ts'
 
@@ -84,7 +84,8 @@ app.get('/api/overview', async (req, res, next) => {
       if (!credentialsAvailable()) {
         throw new HttpError(
           503,
-          'The AI view needs Anthropic credentials. Set ANTHROPIC_API_KEY and restart, then try again.',
+          'The AI view needs Anthropic credentials. Either export ANTHROPIC_API_KEY, or sign in to ' +
+            'your Claude account with `ant auth login`. Restart the server afterwards.',
         )
       }
       const result = await buildOverview(ir)
@@ -100,7 +101,7 @@ app.get('/api/overview', async (req, res, next) => {
 
 /** Lets the UI disable the AI toggle with a reason rather than failing on click. */
 app.get('/api/overview/available', (_req, res) => {
-  res.json({ available: credentialsAvailable() })
+  res.json(credentialStatus())
 })
 
 app.get('/api/source', (req, res, next) => {

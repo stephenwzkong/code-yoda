@@ -90,6 +90,12 @@ export function fetchOverview(repoId: string, scope: string): Promise<View> {
   return get<View>(`/api/overview?${new URLSearchParams({ repoId, scope })}`)
 }
 
-export function overviewAvailable(): Promise<{ available: boolean }> {
-  return get<{ available: boolean }>('/api/overview/available')
+export interface CredentialStatus {
+  available: boolean
+  method: 'api-key' | 'auth-token' | 'claude-account' | 'none'
+  detail: string
+}
+
+export function overviewAvailable(): Promise<CredentialStatus> {
+  return get<CredentialStatus>('/api/overview/available')
 }

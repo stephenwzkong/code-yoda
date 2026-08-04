@@ -6,6 +6,7 @@ import {
   fetchSymbol,
   overviewAvailable,
   search,
+  type CredentialStatus,
   type Meta,
   type SearchHit,
 } from './api.ts'
@@ -37,7 +38,7 @@ export function App() {
   const [scope, setScope] = useState('')
   const [expanded, setExpanded] = useState(false)
   const [mode, setMode] = useState<DiagramMode>('analyzed')
-  const [aiAvailable, setAiAvailable] = useState(false)
+  const [auth, setAuth] = useState<CredentialStatus | null>(null)
   const [diagram, setDiagram] = useState<Diagram | null>(null)
   const [chartPending, setChartPending] = useState(false)
   const [selection, setSelection] = useState<Selection | null>(null)
@@ -80,8 +81,8 @@ export function App() {
     warmUp()
     warmUpHighlighter()
     void overviewAvailable()
-      .then((r) => setAiAvailable(r.available))
-      .catch(() => setAiAvailable(false))
+      .then(setAuth)
+      .catch(() => setAuth({ available: false, method: 'none', detail: 'server unreachable' }))
   }, [])
 
   // Load the diagram whenever the repo or scope changes, then render the levels
@@ -298,15 +299,15 @@ export function App() {
             </button>
             <button
               className={mode === 'ai' ? 'active' : ''}
-              disabled={!aiAvailable}
+              disabled={!auth?.available}
               onClick={() => {
                 setMode('ai')
                 goTo('')
               }}
               title={
-                aiAvailable
-                  ? 'Subsystems grouped and named by Claude, over the same resolved edges'
-                  : 'Needs ANTHROPIC_API_KEY set on the server'
+                auth?.available
+                  ? `Subsystems grouped and named by Claude, over the same resolved edges — using ${auth.detail}`
+                  : 'Needs Anthropic credentials — see the note in the toolbar'
               }
             >
               AI subsystems
@@ -321,6 +322,16 @@ export function App() {
         ) : null}
       </header>
 
+      {mode === 'ai' && auth?.available ? (
+        <div className="banner info">Subsystems named by Claude · authenticated via {auth.detail}</div>
+      ) : null}
+      {meta && auth && !auth.available ? (
+        <div className="banner warn">
+          <strong>AI subsystems is off</strong> — it needs Anthropic access. Either export an API key
+          (<code>ANTHROPIC_API_KEY=sk-ant-…</code>) or sign in with your Claude account
+          (<code>ant auth login</code>). Restart the server afterwards.
+        </div>
+      ) : null}
       {error ? <div className="banner error">{error}</div> : null}
       {meta?.warnings.map((warning) => (
         <div className="banner warn" key={warning}>
