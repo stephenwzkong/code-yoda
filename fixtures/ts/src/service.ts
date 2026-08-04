@@ -8,3 +8,6 @@ export class Service {
 }
 
 export function unused(): void {}
+
+export const defaultService = new Service()
+export const CONFIG = { retries: 3 }

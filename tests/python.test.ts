@@ -59,6 +59,25 @@ describe('Python analyzer', () => {
     ).toBe('resolved')
   })
 
+  it('captures module-level objects built by a call, ignoring plain constants', () => {
+    // Declarative files (agents, routers, toolsets) define everything this way;
+    // without it those files look empty and their diagram has nothing to draw.
+    const serviceNames = names('pkg/service.py')
+    expect(serviceNames).toContain('default_greeter')
+    expect(serviceNames).not.toContain('PLAIN_CONSTANT') // not a call — noise, not structure
+    expect(serviceNames).not.toContain('_private_thing') // private by convention
+    const sym = result.files
+      .find((f) => f.path === 'pkg/service.py')!
+      .symbols.find((s) => s.name === 'default_greeter')!
+    expect(sym.kind).toBe('variable')
+  })
+
+  it('attributes calls inside a module-level object to that object', () => {
+    expect(edge('pkg/service.py#default_greeter', 'pkg/util.py#Greeter', 'call')?.confidence).toBe(
+      'resolved',
+    )
+  })
+
   it('marks an untypeable attribute call as heuristic, not resolved', () => {
     const guess = edge('main.py#ambiguous', 'pkg/util.py#Greeter.uniquely_named_method', 'call')
     expect(guess?.confidence).toBe('heuristic')

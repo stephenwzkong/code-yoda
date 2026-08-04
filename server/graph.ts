@@ -1,7 +1,16 @@
 import type { Confidence, EdgeKind, IR, Lang } from './types.ts'
 import { fileOf } from './types.ts'
 
-export type NodeKind = 'folder' | 'file' | 'function' | 'method' | 'class' | 'module' | 'external' | 'more'
+export type NodeKind =
+  | 'folder'
+  | 'file'
+  | 'function'
+  | 'method'
+  | 'class'
+  | 'variable'
+  | 'module'
+  | 'external'
+  | 'more'
 
 export interface ViewNode {
   id: string
@@ -203,7 +212,17 @@ function aggregate(ir: IR, bucketOf: (id: string) => string | undefined): ViewEd
 }
 
 function byKindThenLabel(a: ViewNode, b: ViewNode): number {
-  const order: NodeKind[] = ['folder', 'file', 'module', 'class', 'function', 'method', 'external', 'more']
+  const order: NodeKind[] = [
+    'folder',
+    'file',
+    'module',
+    'class',
+    'variable',
+    'function',
+    'method',
+    'external',
+    'more',
+  ]
   const diff = order.indexOf(a.kind) - order.indexOf(b.kind)
   return diff !== 0 ? diff : a.label.localeCompare(b.label)
 }

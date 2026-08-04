@@ -54,3 +54,22 @@ describe('TypeScript analyzer', () => {
     expect(fragment.edges.some((e) => e.to === 'src/service.ts#unused')).toBe(false)
   })
 })
+
+describe('module-level objects', () => {
+  it('captures a const built by a call, but not a plain object literal', () => {
+    // `export const app = express()` is structure; `export const CONFIG = {...}` is data.
+    expect(names('src/service.ts')).toContain('defaultService')
+    expect(names('src/service.ts')).not.toContain('CONFIG')
+  })
+
+  it('gives it the variable kind', () => {
+    const sym = fragment.files
+      .find((f) => f.path === 'src/service.ts')!
+      .symbols.find((s) => s.name === 'defaultService')!
+    expect(sym.kind).toBe('variable')
+  })
+
+  it('attributes the construction call to the object, not the file', () => {
+    expect(hasEdge('src/service.ts#defaultService', 'src/service.ts#Service', 'call')).toBe(true)
+  })
+})

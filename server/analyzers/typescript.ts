@@ -69,6 +69,15 @@ function compilerOptions(root: string): ts.CompilerOptions {
   return { ...base, ...parsed.options, noEmit: true, allowJs: true, skipLibCheck: true }
 }
 
+/** True when a declaration sits at the top level of the file, not inside a function. */
+function isModuleLevel(node: ts.Node): boolean {
+  for (let cur = node.parent; cur; cur = cur.parent) {
+    if (ts.isSourceFile(cur)) return true
+    if (ts.isFunctionLike(cur) || ts.isClassLike(cur)) return false
+  }
+  return false
+}
+
 function lineOf(sf: ts.SourceFile, pos: number): number {
   return sf.getLineAndCharacterOfPosition(pos).line + 1
 }
@@ -123,15 +132,18 @@ function collectSymbols(
       add(node, className ? `${className}.${node.name.text}` : node.name.text, 'method', classId)
     } else if (ts.isConstructorDeclaration(node) && className) {
       add(node, `${className}.constructor`, 'method', classId)
-    } else if (
-      ts.isVariableDeclaration(node) &&
-      ts.isIdentifier(node.name) &&
-      node.initializer &&
-      (ts.isArrowFunction(node.initializer) || ts.isFunctionExpression(node.initializer))
-    ) {
-      const id = add(node, node.name.text, 'function')
-      // The checker resolves calls to the initializer, not the variable declaration.
-      idByDecl.set(node.initializer, id)
+    } else if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer) {
+      if (ts.isArrowFunction(node.initializer) || ts.isFunctionExpression(node.initializer)) {
+        const id = add(node, node.name.text, 'function')
+        // The checker resolves calls to the initializer, not the variable declaration.
+        idByDecl.set(node.initializer, id)
+      } else if (
+        isModuleLevel(node) &&
+        (ts.isCallExpression(node.initializer) || ts.isNewExpression(node.initializer))
+      ) {
+        // `const router = express.Router()` is structure, not a constant.
+        add(node, node.name.text, 'variable')
+      }
     }
     ts.forEachChild(node, (child) => visit(child, classId, className))
   }

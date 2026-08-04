@@ -28,6 +28,8 @@ function shape(alias: string, node: ViewNode): string {
       return `${alias}{{${label}}}`
     case 'module':
       return `${alias}[[${label}]]`
+    case 'variable':
+      return `${alias}[(${label})]`
     case 'external':
       return `${alias}[/${label}/]`
     case 'more':
@@ -58,6 +60,7 @@ const CLASS_DEFS = [
   'classDef k-class fill:#3d2c4f,stroke:#a06fd0,color:#f2e9fb',
   'classDef k-function fill:#1e3a32,stroke:#4ec9a0,color:#e4f7f0',
   'classDef k-method fill:#1e3a32,stroke:#4ec9a0,color:#e4f7f0',
+  'classDef k-variable fill:#123040,stroke:#3fa7d6,color:#e3f2fb',
   'classDef k-module fill:#3a3320,stroke:#c9a94e,color:#f7f1e0',
   'classDef k-external fill:#2b2b2b,stroke:#777777,color:#cccccc',
   'classDef k-more fill:#402a2a,stroke:#d07070,color:#fbe9e9',

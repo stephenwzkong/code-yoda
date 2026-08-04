@@ -378,6 +378,130 @@ input {
   stroke: var(--accent) !important;
 }
 
+/* Shown when a scope legitimately has nothing to draw. */
+.chart-empty {
+  position: absolute;
+  z-index: 4;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  max-width: 460px;
+  padding: 24px 28px;
+  text-align: center;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.chart-empty h2 {
+  margin: 0 0 8px;
+  font-size: 16px;
+}
+
+.chart-empty p {
+  margin: 0 0 12px;
+  color: var(--muted);
+}
+
+.chart-empty code {
+  padding: 1px 5px;
+  background: var(--bg-input);
+  border-radius: 4px;
+  color: var(--accent);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+/* Legend explaining shapes and the numbers on edges. */
+.chart-legend {
+  position: absolute;
+  z-index: 6;
+  left: 12px;
+  bottom: 12px;
+  max-width: 330px;
+  background: rgba(22, 27, 34, 0.95);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.chart-legend > button {
+  width: 100%;
+  padding: 6px 10px;
+  background: none;
+  border: none;
+  color: var(--muted);
+  text-align: left;
+  cursor: pointer;
+}
+
+.chart-legend.open > button {
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+}
+
+.chart-legend dl {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 7px 10px;
+  margin: 0;
+  padding: 10px;
+  font-size: 11.5px;
+}
+
+.chart-legend dt {
+  justify-self: center;
+  padding: 1px 7px;
+  border-radius: 4px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.chart-legend dd {
+  margin: 0;
+  color: var(--muted);
+}
+
+.chart-legend code {
+  color: var(--accent);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.lg-edge-count {
+  background: #30363d;
+  color: var(--text);
+}
+.lg-dashed {
+  color: var(--warn);
+}
+.lg-folder {
+  background: #1f3a5f;
+  color: #e8f0fb;
+}
+.lg-file {
+  background: #22303c;
+  color: #9dc3e6;
+}
+.lg-fn {
+  background: #1e3a32;
+  color: #7fe3c2;
+}
+.lg-class {
+  background: #3d2c4f;
+  color: #d3b0f0;
+}
+.lg-var {
+  background: #123040;
+  color: #a9dcf5;
+}
+.lg-ext {
+  background: #2b2b2b;
+  color: #ccc;
+}
+
+.badge-variable {
+  background: #123040;
+  color: #a9dcf5;
+}
+
 .chart-error {
   padding: 16px;
   color: var(--danger);

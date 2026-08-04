@@ -14,6 +14,56 @@ interface Props {
   pendingLabel?: string
 }
 
+/** Explains what the diagram's shapes and edge numbers mean. Collapsible. */
+function Legend({ scopeKind }: { scopeKind: 'dir' | 'file' }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className={open ? 'chart-legend open' : 'chart-legend'}>
+      <button onClick={() => setOpen((o) => !o)}>{open ? '▾' : '▸'} Legend</button>
+      {open ? (
+        <dl>
+          <dt className="lg-edge-count">3</dt>
+          <dd>
+            {scopeKind === 'dir'
+              ? 'How many imports and calls cross between these two blocks. Thicker relationships mean more coupling.'
+              : 'How many times this function calls the other.'}
+          </dd>
+          <dt className="lg-dashed">– – ▸</dt>
+          <dd>
+            A dashed edge is a <em>guess</em>: matched by name because the target could not be
+            resolved. A solid edge was resolved for certain.
+          </dd>
+          {scopeKind === 'dir' ? (
+            <>
+              <dt className="lg-folder">▭</dt>
+              <dd>Folder — click to open it. The small number is how many files it holds.</dd>
+              <dt className="lg-file">▭</dt>
+              <dd>File — the small number is how many symbols it defines.</dd>
+            </>
+          ) : (
+            <>
+              <dt className="lg-fn">▭</dt>
+              <dd>Function or method</dd>
+              <dt className="lg-class">⬡</dt>
+              <dd>Class</dd>
+              <dt className="lg-var">▭</dt>
+              <dd>Module-level object, e.g. <code>agent = LlmAgent(…)</code></dd>
+              <dt className="lg-ext">▱</dt>
+              <dd>Something in another file, shown for context</dd>
+            </>
+          )}
+        </dl>
+      ) : null}
+    </div>
+  )
+}
+
+/** A synthetic folder node for the parent scope, for the empty-state back link. */
+function upOneLevel(scope: string): ViewNode {
+  const parent = scope.includes('/') ? scope.slice(0, scope.lastIndexOf('/')) : ''
+  return { id: parent, label: parent, kind: 'folder', path: parent }
+}
+
 export function ChartPane({ diagram, selectedId, onSelect, onHover, pending, pendingLabel }: Props) {
   const hostRef = useRef<HTMLDivElement>(null)
   const [transform, setTransform] = useState({ x: 0, y: 0, scale: 1 })
@@ -98,8 +148,29 @@ export function ChartPane({ diagram, selectedId, onSelect, onHover, pending, pen
     dragRef.current = null
   }
 
+  const isEmpty = diagram.view.nodes.length === 0
+
   return (
     <div className={pending ? 'chart-pane is-pending' : 'chart-pane'}>
+      {isEmpty && !pending ? (
+        <div className="chart-empty">
+          <h2>Nothing to diagram here</h2>
+          {diagram.view.scopeKind === 'file' ? (
+            <p>
+              <code>{diagram.view.scope.split('/').pop()}</code> has no functions, classes or
+              module-level objects — its source is in the panel on the right.
+            </p>
+          ) : (
+            <p>
+              <code>{diagram.view.scope || 'This repo'}</code> has no analyzable Python or
+              JavaScript/TypeScript files.
+            </p>
+          )}
+          <button className="link-button" onClick={() => onSelect(upOneLevel(diagram.view.scope))}>
+            ← Back up a level
+          </button>
+        </div>
+      ) : null}
       {pending ? (
         <div className="chart-overlay" role="status" aria-live="polite">
           <div className="chart-spinner" />
@@ -122,6 +193,7 @@ export function ChartPane({ diagram, selectedId, onSelect, onHover, pending, pen
           style={{ transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})` }}
         />
       </div>
+      <Legend scopeKind={diagram.view.scopeKind} />
       <div className="chart-controls">
         <button onClick={() => setTransform((t) => ({ ...t, scale: Math.min(4, t.scale * 1.2) }))}>+</button>
         <button onClick={() => setTransform((t) => ({ ...t, scale: Math.max(0.15, t.scale / 1.2) }))}>−</button>

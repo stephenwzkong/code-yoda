@@ -1,6 +1,11 @@
 export type Lang = 'ts' | 'js' | 'py'
 
-export type SymbolKind = 'function' | 'method' | 'class'
+/**
+ * `variable` covers module-level objects built by a call — `agent = LlmAgent(...)`,
+ * `router = express.Router()`. Declarative codebases put most of their structure
+ * there, and ignoring it leaves whole files looking empty.
+ */
+export type SymbolKind = 'function' | 'method' | 'class' | 'variable'
 
 export interface SymbolInfo {
   /** `${path}#${name}` — stable across runs, used as a graph node id */

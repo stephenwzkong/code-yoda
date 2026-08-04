@@ -112,8 +112,18 @@ class FileScan:
                             top_level=False, owner_class=sym_id)
             return
 
-        if isinstance(node, ast.Assign):
+        if isinstance(node, (ast.Assign, ast.AnnAssign)):
             self._record_assignment(node, enclosing)
+            # A module-level object built by a call is real structure, not a
+            # constant: `agent = LlmAgent(...)` is the point of the file.
+            if top_level:
+                sym_id = self._add_module_object(node)
+                if sym_id is not None:
+                    for child in ast.iter_child_nodes(node):
+                        if isinstance(child, ast.Call):
+                            self._record_call(child, sym_id, owner_class)
+                        self._walk_node(child, sym_id, class_id, class_name, False, owner_class)
+                    return
         elif isinstance(node, ast.Import):
             for alias in node.names:
                 self.import_targets.append(alias.name)
@@ -146,9 +156,30 @@ class FileScan:
             base = base + node.module.split(".")
         return ".".join(base) if base else None
 
+    def _add_module_object(self, node):
+        """Module-level `name = something(...)` becomes a `variable` symbol.
+
+        Only call-valued assignments qualify. Plain constants would flood the
+        diagram without describing structure.
+        """
+        if not isinstance(node.value, ast.Call):
+            return None
+        targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+        for target in targets:
+            if isinstance(target, ast.Name) and not target.id.startswith("_"):
+                return self._add(node, target.id, "variable", top_level=True)
+        return None
+
     def _record_assignment(self, node, enclosing):
         """`x = SomeClass(...)` — the only local type inference we attempt."""
         if not isinstance(node.value, ast.Call):
+            return
+        if isinstance(node, ast.AnnAssign):
+            if isinstance(node.target, ast.Name):
+                ctor = node.value.func
+                name = ctor.id if isinstance(ctor, ast.Name) else getattr(ctor, "attr", None)
+                if name:
+                    self.local_types[(enclosing, node.target.id)] = name
             return
         ctor = node.value.func
         if isinstance(ctor, ast.Name):
